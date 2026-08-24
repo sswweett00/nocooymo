@@ -1,0 +1,22 @@
+struct VertexOutput {
+    @location(0) position: vec4<f32>,
+    @location(1) color: vec4<f32>,
+    @builtin(position) clip_position: vec4<f32>,
+};
+
+@vertex
+fn vs_main(
+    @location(0) position: vec3<f32>,
+    @location(1) color: vec4<f32>
+) -> VertexOutput {
+    var output: VertexOutput;
+    output.position = vec4<f32>(position, 1.0);
+    output.color = color;
+    output.clip_position = output.position;
+    return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    return input.color;
+}

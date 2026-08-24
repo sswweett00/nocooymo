@@ -1,0 +1,23 @@
+[package]
+name = "elysium-render"
+description = "Elysium Engine render subsystem: RHI, virtual geometry, lighting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+elysium-core.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+bitflags.workspace = true
+glam.workspace = true
+nalgebra.workspace = true
+rand.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+winit.workspace = true

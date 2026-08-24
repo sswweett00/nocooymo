@@ -1,0 +1,315 @@
+# Elysium Motoru: Derinlemesine Mimari İnceleme
+
+Bu belge, Elysium Motoru’nun tüm katmanlarını, kıdemli bir motor geliştiricisinin gözünden, uygulama detayları, algoritmalar ve Rust’a özgü mühendislik kararlarıyla birlikte ortaya koyar. Hedef nettir: **Hiç kod yazmadan, en yüksek görsel doğruluk ve performansla, tüm platformlara AAA oyun üretmek.**
+
+---
+
+## Özellik Rehberi (Feature Catalog)
+
+| # | Özellik Adı | Kategori | Açıklama |
+|---|------------|----------|----------|
+| F01 | **Entity Component System (ECS)** | Çekirdek | Archetype + Chunk tabanlı hibrit depolama, 16 KiB sayfalar |
+| F02 | **Sistem Zamanlayıcısı** | Çekirdek | Rayon work-stealing paralel sistem çalıştırma |
+| F03 | **Deferred Command Buffer** | Çekirdek | Varlık komutlarının kare sonunda toplu uygulanması |
+| F04 | **Tag Komponentleri** | Çekirdek | Zero-sized sparse set etiketler (Player, Selected…) |
+| F05 | **World Allocator** | Bellek | Sayfa tabanlı chunk havuzu (16 KiB sayfalar) |
+| F06 | **Frame Allocator** | Bellek | Linear bump allocator, her kare sıfırlanır |
+| F07 | **GPU RHI Soyutlaması** | Render | Vulkan/DX12/Metal/WebGPU abstraction (RenderBackend trait) |
+| F08 | **Meshlet Hierarşisi** | Render | Nanite-benzeri meshlet gruplandırma (128 tri / 64 vert limit) |
+| F09 | **Veyra** | Render | GPU-driven visibility pipeline, meshlet LOD |
+| F10 | **Aether** | Render | Page-based streaming virtual texturing |
+| F11 | **Tremor** | Fizik | XPBD constraint solver, fluids and fracture |
+| F12 | **Geniş/N Dar Aşama** | Fizik | Broad-phase hücre grid + Narrow-phase AABB/Sphere |
+| F13 | **Kırılma / Kırılganlık** | Fizik | Mesh fracture, parçacık sistemi |
+| F14 | **Sıvı Fiziği (FLIP/PIC)** | Fizik | GPU-bound fluid simulation, SPH backend |
+| F15 | **Kinetic** | Görsel Senaryo | Node-based visual scripting, SSA IR |
+| F16 | **Kinetic Rust Codegen** | Görsel Senaryo | KineticIR'dan native Rust kodu üretimi |
+| F17 | **Kinetic JIT** | Görsel Senaryo | Cranelift ile runtime kod derleme |
+| F18 | **Kinetic SIMD** | Görsel Senaryo | Automatic SIMD from Kinetic IR |
+| F19 | **Ely Archive Formatı** | Asset | Sıkıştırılmış `.ely` paket formatı, magic "ELY\0" |
+| F20 | **Kiln** | Asset | Async asset pipeline, meshlet build |
+| F21 | **Elysium UI (Immediate Mode)** | Kullanıcı Arayüzü | GPU-hızlandırmalı immediate mode, 80+ widget |
+| F22 | **Dock Layout Sistemi** | Kullanıcı Arayüzü | Panel yerleştirme, kenetleme, sürükle-bırak |
+| F23 | **Stil Teması (CSS-benzeri)** | Kullanıcı Arayüzü | Tema renkleri, köşe yuvarlaklıkları, animasyonlar |
+| F24 | **GPUI Editor Panel Sistemi** | Kullanıcı Arayüzü | GPUI 0.2 View modeli, declarative builder API |
+| F25 | **Sahne Hiyerarşi Paneli** | Editör | Entity listesi, arama, çoklu seçim, toggle görünürlük |
+| F26 | **Inspector Paneli** | Editör | Transform edit, komponent listesi, özellik değiştirme |
+| F27 | **Viewport (3D Görünüm)** | Editör | Render target, kamera kontrolü, entity seçimi (pick) |
+| F28 | **Dönüştürme Gizmo’su** | Editör | Translate/Rotate/Scale, çoklu eksen, snapping |
+| F29 | **Araç Sistemi (Tool System)** | Editör | EditorTool trait, activate/deactivate/handle_input |
+| F30 | **Undo/Redo Çerçevesi** | Editör | Action trait, delta yığın, 256 limite sahip geçmiş |
+| F31 | **Weave** | Çok Oyunculu | CRDT-based collaborative document system |
+| F32 | **Weave Network (UDP/WebRTC)** | Çok Oyunculu | Gerçek zamanlı senkronizasyon |
+| F33 | **Yetki ve Kilitleme** | Çok Oyunculu | Entity-level locking, permission service |
+| F34 | **Synapse Runtime** | Yapay Zekâ | ONNX inference backend |
+| F35 | **Synapse NPC'leri** | Yapay Zekâ | RL training, reward functions, model deployment |
+| F36 | **Mirror (AI Animasyon)** | Yapay Zekâ | Single-camera motion capture and rigging |
+| F37 | **Doku Sentezleme / İnpainting** | Yapay Zekâ | AI-powered texture generation |
+| F38 | **Platform Abstraction** | Platform | Cross-compilation (Windows/Mac/Linux), store integration |
+| F39 | **Cloud Gaming** | Platform | GFN / Xbox Cloud Gaming stream support |
+| F40 | **Bellek İzleme (Leak Detector)** | Platform | Backtrace-based leak detection |
+
+---
+
+## 1. Çekirdek Mimari ve Temel Bileşenler
+
+### 1.1. ECS – Archetype + Chunk Tabanlı Hibrit Depolama
+
+Motorun kalbindeki varlık sistemi, **Bevy’nin esin kaynağı olduğu ama AAA seviyesine ölçeklenmiş özgün bir ECS** kullanır.
+
+- **Arketip (Archetype) + Sparse Set Hibriti:**  
+  Varlıklar, sahip oldukları komponent türlerine göre *arketip* adı verilen gruplara ayrılır. Her arketip, komponentleri ayrı ayrı sütunlarda değil, **tek bir bitişik bellek bloğunda (chunk)** saklar; bir chunk 16 KiB’lık sayfalardan oluşur. Bu yapı, cache bellek ıskalamalarını en aza indirir ve SIMD ile işlemeye uygundur.  
+  Anlık komponent ekleme/çıkarma işlemleri, varlığın chunk’lar arasında taşınmasını gerektirir. Motor, bu taşımaları toplu (batch) hâlinde gerçekleştirerek yükü amorti eder; her kare sonunda bir “değişiklik arabelleği” işlenir.
+
+- **Sistem Planlama ve Otomatik Paralelleştirme:**  
+  Her sistem (Rust fonksiyonu), okuma ve yazma yaptığı komponent kümelerini bildirir. Bağımlılık grafiği çıkarılır ve **Rayon’un iş çalma (work‑stealing) zamanlayıcısı** üzerinde, veri yarışı olmaksızın maksimum paralellikle çalıştırılır. Sistemler, aynı arketipin farklı chunk’ları üzerinde `par_iter` ile dağıtılır; bu, render, fizik ve oyun mantığını aynı anda işleyebilmeyi sağlar.
+
+- **Deferred Command Buffer:**  
+  Sistemler sırasında varlık yaratma/yok etme ve komponent ekleme/çıkarma istekleri bir kenara kaydedilir ve kare sonunda tutarlı bir şekilde uygulanır. Bu sayede yineleme sırasında bellek yeniden düzenleme olmaz.
+
+- **Zero‑Sized ve Tag Komponentleri:**  
+  Sadece varlığa işaret koyan etiketler (ör. `Player`, `Static`, `Selected`) bellekte yer kaplamaz; özel sparse set’lerde hızlı erişim sunar.
+
+### 1.2. Bellek Mimarisi ve Özel Ayırıcılar
+
+Motor, dinamik bellek yönetimini sıkı denetim altında tutar:
+
+- **Dünya Ayırıcısı (World Allocator):** ECS chunk’ları için ayrılmış, sayfa tabanlı bir havuz. Silinen varlıkların boşluğu, aynı arketipten yeni varlıklar gelene kadar chunk içinde boş kalır; böylece iterasyon sırasında yoğunluk korunur.
+- **Çerçeve Ayırıcısı (Frame Allocator):** Her kare başında sıfırlanan bir doğrusal ayırıcı. Geçici veriler (render komutları, fizik temas noktaları, serileştirme tamponları) burada oluşturulur; `Drop` çağrısına ihtiyaç duymaz, bellek basit bir işaretçi geri sarımıyla “temizlenir”.
+- **GPU Bellek Havuzları:** Dokular, tamponlar ve hızlandırma yapıları, motorun kendi sanal bellek yöneticisi (VMA benzeri) tarafından tahsis edilir; parçalanmayı önleyen akıllı birleştirme ve önbellek stratejileri mevcuttur.
+
+### 1.3. Tür Sistemi ve Serileştirme
+
+- **`rkyv` ile Sıfır‑Kopya Arşivleme:** Tüm komponentler ve varlıklar, `rkyv` türevli makrolarla (Archive, Serialize, Deserialize) donatılmıştır. Kayıt dosyasına yazarken veriler **oldukları yerde** serileştirilir; yükleme sırasında tek bir `mmap` çağrısı ile bellek haritası olarak okunur ve hiçbir kopyalama yapılmadan kullanılır. Böylece dev sahneler nanosaniyeler mertebesinde yüklenir.
+- **Varlık Referansları:** `Entity` tanıtıcıları, nesil (generation) bilgisi taşıyan 64 bitlik indekslerdir. Silinen bir varlığa erişim güvenli bir şekilde `Option` döner; dangling pointer yoktur.
+
+---
+
+## 2. Render Altsistemi – Tamamen GPU‑Driven, Sinema Kalitesi
+
+### 2.1. RHI (Rendering Hardware Interface)
+
+Elysium, **tek bir render arayüzü** üzerinden Vulkan 1.3, DirectX 12 Ultimate, Metal 3 ve WebGPU’yu soyutlar. Temel ilkeler:
+
+- **Bindless Kaynak Modeli:** Tüm dokular, örnekleyiciler ve tamponlar 32‑bit indekslerle adreslenir. Bir malzeme, yüz binden fazla dokuyu referanslayabilir ve GPU bunları tek bir draw call içinde, kök imza (root signature) değiştirmeden kullanır.
+- **Tam Otomatik Pipeline Yönetimi:** Grafik ve compute pipeline’lar, varlık pişirme aşamasında önceden derlenir. Shader varyantları (permutasyon) yalnızca gerçekten kullanılan malzeme/geometri kombinasyonları için oluşturulur; bir `ShaderCache` veritabanı takip eder.
+- **GPU İzleme ve İşaretleme:** Tüm GPU çalışmaları, motorun yerleşik profiler’ı ile senkronize edilmiş zaman damgalarıyla işaretlenir; darboğazlar kaynak seviyesinde teşhis edilir.
+
+### 2.2. Sanal Geometri (Virtual Geometry) – Nanite‑Benzeri Boru Hattı
+
+Yüksek poligonlu varlıklar, pişirme sırasında bir **meshlet hiyerarşisine** dönüştürülür:
+
+1. **Meshlet Oluşturma:** Her model, en fazla 128 üçgen ve 64 verteks içeren *meshlet*’lere bölünür. Her meshlet bir BVH (bounding volume hierarchy) düğümüne yerleştirilir; ebeveyn meshlet’ler çocuklarının basitleştirilmiş versiyonlarıdır (LOD).
+2. **GPU‑Driven LOD Seçimi:** Bir compute shader, her meshlet’in ekrandaki piksel kaplama alanını tahmin eder ve eşiğe göre uygun seviyeyi seçer. Seçilen meshlet’ler, görünürlük tamponuna (Visibility Buffer) yazılır.
+3. **İki‑Geçişli Sıkıştırma:** Önce sadece `meshletID` ve `triangleID` çizilir. Ardından bir tam ekran geçişi, malzeme tamponunu okuyarak her pikselin rengini, sadece görünür olan üçgenler için hesaplar. Mikro‑poligonlar (piksel altı boyut) için yazılım rasterleştirici devreye girer; bu, Rust ile yazılmış bir compute kernel’dir.
+4. **Hiyerarşik Z‑Tampon (Hi‑Z):** Görünürlük testleri, bir Hi‑Z piramidi ile hızlandırılır; meshlet’ler ekrana projekte edilip oklüzyon testine tabi tutulur.
+
+### 2.3. Sanal Dokular (Virtual Texturing)
+
+Arazi ve büyük modellerde, **sekte‑tabanlı sanal doku sistemi** kullanılır. Bir mega‑doku, 16K’lık sayfalara bölünür; GPU, sadece görünen sayfaları fiziksel dokuda tutar. Sayfa tablosu, compute shader ile güncellenir ve geri bildirim okuması (feedback read) ile gelecek kareler için talep oluşturulur. Bu, açık dünya oyunlarında terabaytlarca doku verisini anında kullanılabilir kılar.
+
+### 2.4. Işıklandırma ve Gölgelendirme Mimarisi
+
+- **Dünya‑Uzayı Radyans Önbelleği (World‑Space Radiance Cache – WRC):** Işın izlemeli küresel aydınlatma için, sahne etrafına dağıtılmış 3B ızgara probları kullanılır. Prob güncellemesi, GPU’da yürüyüş yapan ışınlarla yapılır; sonuçlar düşük‑çözünürlüklü bir ışıklandırma alanı olarak enterpolasyonla uygulanır.
+- **Yazılım Geri Dönüşü (SDF + Voxel Cone Tracing):** Donanım ışın izleme yoksa, sahne otomatik olarak SDF (Signed Distance Field) ve voxel yapısına dönüştürülür. Voxel koni izleme ile difüz ve speküler yansımalar hesaplanır. Tüm bu geçişler malzeme editöründe tek bir onay kutusu ile seçilir.
+- **Sanal Gölge Haritaları (Virtual Shadow Maps – VSM):** Işık kaynağı başına sanal bir doku tutulur; her bir “sayfa” (ör. 128x128 texel) yalnızca gerekli olduğunda güncellenir. GPU, önceki karedeki derinlikten sahne analizi yaparak hangi sayfaların aktif olduğunu belirler. Kamera yakınında ultra yüksek çözünürlük (ör. 8K sayfa), uzakta seyrek sayfalar.
+
+### 2.5. Yükseltme ve Yeniden Yapılandırma
+
+- **DLSS 3.5 / FSR 3.1 / XeSS 2.0:** Motor, her sağlayıcının API’sine doğrudan bağlanır; hareket vektörleri, derinlik ve renk tamponlarını sağlar. DLSS Ray Reconstruction için ek gürültülü ışıklandırma tamponu beslenir.
+- **Kare Oluşturma (Frame Generation):** Özel bir akış haritası (optical flow) geçişi, motorun içinde compute shader olarak gerçekleştirilir ve donanım tabanlı olmayan kare oluşturmaya da olanak tanır.
+
+### 2.6. Shader Derleme ve Yönetimi
+
+Shader’lar, Rust makroları kullanılarak **tek bir kaynak dosyada** HLSL/GLSL’den SPIR‑V’e dönüştürülür. SPIR‑V, `naga` kütüphanesi aracılığıyla hedef platformun diline çevrilir (DXIL, MSL, GLSL). Tüm varyantlar, **varlık pişirme sırasında önceden derlenir**; oyun sırasında shader derlemesi olmaz, böylece takılmalar yaşanmaz.
+
+---
+
+## 3. Fizik Motoru – Sıfırdan Rust ile XPBD
+
+### 3.1. Çözücü (Solver) Tasarımı
+
+Fizik, **Genişletilmiş Pozisyon Tabanlı Dinamik (XPBD)** üzerine kuruludur. Her kare:
+
+1. **Geniş Faz (Broad Phase):** Dünya, seyrek bir ızgara ve hiyerarşik bir AABB ağacı (BVH) ile temsil edilir. Çarpışma çiftleri paralel olarak tespit edilir.
+2. **Dar Faz (Narrow Phase):** Çiftler için GJK/EPA (dışbükey), mesh‑mesh için özel SAT (Separating Axis Theorem) optimize edilmiş algoritmalar. Sürekli çarpışma tespiti (CCD) için geriye dönük pozisyon interpolasyonu.
+3. **Kısıt Çözümü:** Pozisyon tabanlı yineleme, Gauss‑Seidel yerine paralelleştirilebilir Jacobi yöntemi ile yapılır; kısıtlar arasında atomik olmayan güncellemeler kullanılarak hızlandırılır. GPU’da çalıştırma opsiyonu vardır; özellikle yumuşak gövdeler ve kumaş compute shader’lara taşınır.
+
+### 3.2. Yıkım ve Kırılma
+
+- **Ön‑Parçalama:** Varlık pişirme sırasında, mesh üzerinde Voronoi diyagramı ile parçalar oluşturulur ve her parça kendi dışbükey gövdesiyle fizik dünyasına eklenir.
+- **Çalışma Zamanı Aktivasyonu:** Bir çarpışma kuvveti eşiği aştığında, bağlantı noktaları kopar ve parçalar bağımsız fizik cisimlerine dönüşür. Parçalar arasındaki bağlar başlangıçta grafiksel bir bağ kuvveti (glue) ile bir arada tutulur; bu da bir PBD kısıtıdır.
+
+### 3.3. Akışkanlar ve Hacimsel Efektler
+
+- **FLIP/PIC Hibrit Sıvı Simülasyonu:** Makroskopik su kütleleri için, grid tabanlı hız alanı ve parçacık taşıma. Gridler GPU’da çözülür, parçacıklar compute shader’larda adveksiyona uğrar.
+- **SPH (Smoothed Particle Hydrodynamics):** Küçük ölçekli spreyler, kan, eriyik metal gibi efektler için. Tüm hesaplamalar GPU’da, komşuluk araması hash grid ile.
+
+### 3.4. ECS ile Entegrasyon
+
+Her fiziksel obje, `RigidBody`, `Collider`, `Mass` gibi komponentlere sahiptir. Fizik dünyası, bu komponentleri okuyan ve `Transform`’u güncelleyen özel bir sistemler zinciridir. Böylece render, ses ve yapay zekâ, fizik sonuçlarını aynı ECS değişiklikleriyle doğal olarak görür.
+
+---
+
+## 4. Flux Graph – Sıfır Kod, Maksimum Performans
+
+### 4.1. Görsel Betiklemeden Makine Koduna
+
+Kullanıcının oluşturduğu düğüm grafiği, şu aşamalardan geçer:
+
+1. **FluxIR (Ara Temsil):** Graf, saf fonksiyonel, statik tipli bir SSA (Static Single Assignment) formuna indirgenir. Bu aşamada veri akış analizi, yan etki yalıtımı ve bellek ömürleri belirlenir. Paralelleştirilebilir bölgeler işaretlenir.
+2. **Rust Kod Üretimi:** FluxIR, doğrudan Rust sözdizimi üreten bir arka uca beslenir. Üretilen kod, motorun ECS API’lerini kullanır; her düğüm bir fonksiyon çağrısına dönüşür. Örneğin bir `Multiply` düğümü `a * b` ifadesine, bir `PlaySound` düğümü `audio_system.play(event)` çağrısına çevrilir.
+3. **JIT Derleme (Editör Zamanı):** Editörde, üretilen Rust kodu `cranelift` JIT derleyicisine verilir. Derleme mikrosaniyeler sürer; ortaya çıkan makine kodu bellek içinde saklanır ve hemen çalıştırılır. **Sıcak yeniden yükleme:** Değişen bir düğümden etkilenen en küçük fonksiyon yeniden derlenir; değişmeyen durum (ECS varlıkları) korunur.
+4. **AOT Derleme (Yayın Zamanı):** Son sürüm alınırken, tüm Flux grafikleri Rust kodu olarak diske yazılır, projenin bir parçası hâline getirilir ve `rustc` ile tüm agresif optimizasyonlar (LTO, PGO) açık olarak derlenir. Hiçbir yorumlama maliyeti kalmaz.
+
+### 4.2. Otomatik SIMD ve Vektörleştirme
+
+Üretilen Rust kodu, `nalgebra` ve standart kütüphane işlemlerini kullandığından, derleyici otomatik vektörleştirme yapabilir. Örneğin bir parçacık sistemi döngüsü, AVX‑512 komutlarına dönüştürülebilir. Kullanıcı bunun için hiçbir şey yapmaz.
+
+### 4.3. Güvenlik ve Hata Ayıklama
+
+Flux Graph editöründe, tip uyumsuzlukları (ör. bir vektörü skalere bağlamak) anında kırmızı vurgulanır. Grafik çalıştırıldığında, Rust’ın `panic`’leri otomatik olarak yakalanır ve editörde ilgili düğüm yanıp söner; kullanıcı hatanın nerede olduğunu görür, kod okumak zorunda kalmaz.
+
+---
+
+## 5. Dahili İçerik Üretim Araçları – Tek Motor, Tam Stüdyo
+
+Tüm araçlar, motorun aynı render ve ECS altyapısı üzerinde çalışır. Bu, editörde görülen her pikselin oyun kalitesinde olmasını sağlar.
+
+### 5.1. Birleşik Modelleme ve Düzenleme
+
+#### Veri Yapıları:
+- **Düzenlenebilir Mesh:** `Half‑Edge` tabanlı bir veri yapısı değil, doğrudan endeksli tamponlar (vertex, edge, face) üzerinde çalışan, **tahribatsız değiştirici yığını** ile birleşik bir modeldir. Temel mesh, orijinal halini korur; tüm düzenleme işlemleri (extrude, bevel vb.) bir dizi operasyon olarak saklanır ve GPU’da tekrar oynatılır. Bu, sonsuz geri almayı ve düşük bellek kullanımını mümkün kılar.
+- **Seçim Setleri:** Seçili verteks/kenar/yüzler, ECS’de `Selected` etiketi ve `MeshElementSelection` komponentiyle temsil edilir. Böylece herhangi bir sistem (prosedürel araç, fizik, script) seçili ögeleri sorgulayabilir.
+
+#### GPU Hızlandırmalı Modelleme Algoritmaları:
+- **Extrude:** Seçili yüzlerin normal boyunca ötelenmesi, yan yüzeylerin oluşturulması. Bu işlem bir compute shader’da, yeni geometriyi doğrudan mesh tamponlarına yazar.
+- **Boolean (CSG):** İki mesh arasında birleşim/kesişim/fark. Motor, mesh’leri önce meshlet hiyerarşisine çevirir, ardından meshlet’lerin AABB’leri ile aday çiftleri bulur. Her çift için üçgen‑üçgen kesişim testi yapılır ve yeni topoloji, yine meshlet olarak üretilir. Tüm süreç GPU’da, `wgpu`’nun compute yetenekleriyle gerçekleşir.
+- **Subdivision Surface:** OpenSubdiv uyumlu. Kontrol kafesi CPU’da tutulur, limit yüzey GPU’da tessellation shader veya compute shader ile üretilir.
+
+### 5.2. Sculpting – Dijital Kil Motoru
+
+#### Dinamik Voxel Remesher (Sürekli Yeniden Topoloji)
+Elysium’un heykeltraşlık sistemi, yüzeyi bir **imzalı mesafe alanı (SDF)** olarak değil, doğrudan **dinamik üçgen ağ** olarak yönetir. Algoritma:
+
+1. **Yerel Yeniden Ağ Oluşturma (Local Remeshing):** Fırça darbesi etki alanı içindeki üçgenler, bir compute shader ile analiz edilir. Kenar uzunluğu çok büyükse bölünür, çok küçükse daraltılır; valans (valence) ideal değere getirilir. Bu işlem, `meshopt` kütüphanesinin GPU versiyonuyla yapılır.
+2. **Yüzey Takibi:** Fırça darbesiyle eklenen detay, yüksek frekanslı bir yer değiştirme (displacement) olarak ayrı bir tamponda saklanır. Kullanıcı alt bölüm seviyesini düşürdüğünde, bu detay normal haritaya veya daha düşük LOD seviyesine gömülür.
+3. **Bellek Yönetimi:** Aktif sculpt objesi için GPU üzerinde iki büyük tampon (çift tamponlama) bulunur. Her fırça darbesi sonunda, değişen bölge kompakt hâle getirilir ve bellek ayak izi sınırlanır.
+
+#### Fırça Motoru
+Her fırça türü, bir **compute shader** ile uygulanır:
+- **Clay:** Fare/tablet pozisyonu boyunca vertex’leri normal yönünde iter; düşme (falloff) eğrisi prosedürel bir gradyan maskesine dayanır.
+- **Smooth:** Komşuluk ortalaması alarak yüzeyi yumuşatır; Laplacian smooth.
+- **Trim Dynamic:** Yüzeyi bir düzleme göre düzleştirir; düzlem fırça merkezinden geçer ve görüş açısına bağlı olarak döner.
+
+Tüm fırçalar, tablet basıncına duyarlıdır; basınç ve eğim verileri `winit` + platform API’leri aracılığıyla alınır ve GPU’ya uniform olarak gönderilir.
+
+### 5.3. Rigging ve Animasyon
+
+#### Otomatik Rigleme (AI‑Powered)
+- **Eklem Yeri Tespiti:** Bir insansı model içe aktarıldığında, bir ONNX modeli (önceden eğitilmiş, motorla birlikte gelen) hacimsel ısı haritası çıkararak omuz, dirsek, diz gibi anahtar noktaları belirler. Ardından bir iskelet şablonu oturtulur.
+- **Skinning Ağırlıkları:** Ağırlık hesaplama, kemik-kafes (bone‑cage) yöntemi ve bazı bölgelerde difüzyon tabanlı otomatik ağırlıklandırma ile yapılır. Sonuçlar Weight Paint modunda manuel düzeltmeye açılır; fırça, her vertex’in `BoneWeight` komponentini değiştirir.
+
+#### Motion Matching ve Durum Makinesi
+- **Hareket Kütüphanesi İşleme:** Kullanıcı, bir klasöre FBX animasyonları atar. Motor, her animasyon karesi için eklem pozisyonu, hız, yön gibi özellikleri çıkarır ve bir veritabanına yazar. **Eğitim**, sadece bir düğmeye tıklamaktır; arkada bir Rust sistemi tüm veriyi indeksler.
+- **Çalışma Zamanı Sorgulama:** Her kare, karakterin anlık durumu (hız, yön, istenen eylem) Motion Matching veritabanında bir en yakın komşu araması yapar ve en iyi pozu seçer. Arama, AVX‑512 kullanan `k‑d tree` ile optimize edilmiştir.
+- **Durum Makinesi Düğümleri:** Görsel editörde “Walk”, “Run”, “Jump” durumları ve aralarına blend süresi girilmiş geçişler bulunur. Her durum, bir Motion Matching sorgusu veya tek bir animasyon klibine bağlanabilir. Geçiş koşulları Flux Graph ile yazılır; örneğin “Jump” düğümüne gelen geçiş, `Input::JumpPressed` sinyaline bağlıdır.
+
+### 5.4. Sinematik Sekans Düzenleyici
+
+#### Zaman Çizelgesi ve Anahtar Kareleme
+- **Veri Modeli:** Sekans, zaman çizelgesi üzerindeki parçalar (track) hiyerarşisinden oluşur. Her parça, belirli bir komponentin (Transform, Light Intensity, Camera FOV) zaman içindeki değerini tutan anahtar karelere sahiptir. Anahtar kareler arası eğri interpolasyonu, `spline` kütüphanesi ile Bezier/Linear/Constant seçenekleriyle yapılır.
+- **Kontrol Rig Bağlama:** Bir karakterin kemikleri, sinematik içinde doğrudan anahtar karelenebilir. Ayrıca, kontrol rig parametreleri (IK hedefleri, bakış noktaları) da anahtar karelenerek oyun‑içi rig ile sinematik rig birleştirilir.
+- **Canlı Kayıt:** Sekans oynatılırken, kullanıcı sahnedeki bir objeyi hareket ettirirse, hareket otomatik olarak anahtar karelere dönüştürülür. Bu, performans yakalama olanağı sağlar.
+- **Olay Tetikleyicileri:** Sekans içine Flux Graph’a bağlı `Event` düğümleri yerleştirilir. Bu, bir kapının açılması, diyalog başlatılması veya patlama efekti gibi olayları tetikler.
+
+#### Yüz Animasyonu ve Diyalog Sentezi
+- **Metin‑Konuşma (TTS) ve Dudak Senkronizasyonu:** Motor, Rust’a bağlanmış hafif bir TTS motoru (veya sistem TTS’i) kullanır. Üretilen fonem dizisi, önceden hazırlanmış bir dudak pozları kütüphanesine (blendshape) eşlenir. Bu eşleme, ses dosyasının süresine uygun bir `BlendShapeTrack` olarak otomatik oluşturulur.
+- **Blendshape Düzenleyici:** Karakterin yüz ifadeleri için görsel bir blend shape kanvası mevcuttur. Farklı ifadelerin ağırlıkları anahtar karelenebilir.
+
+---
+
+## 6. Varlık Boru Hattı – Asenkron Pişirme ve Dağıtım
+
+### 6.1. İçe Aktarma ve Pişirme Motoru
+
+- **Asenkron Görev Sistemi:** `tokio` tabanlı bir iş parçacığı havuzu, içe aktarma, sıkıştırma ve LOD oluşturma işlemlerini arka planda yürütür. Bir `.fbx` dosyası sürüklendiğinde, kullanıcıya ilerleme çubuğu gösterilirken sahnede çalışmaya devam edebilir.
+- **Ara Format (`.ely`):** Motorun dahili formatı, `rkyv` ile serileştirilmiş bir arşivdir; meshlet hiyerarşisi, fizik çarpışma şekilleri, BC7/ASTC sıkıştırılmış doku verileri ve animasyon eğrilerini tek bir dosyada toplar. Dosya, bellek haritasıyla doğrudan okunabilir.
+- **Doku Pişirme:** İçe aktarılan dokular, `basis-universal` ve özel kodlayıcılar kullanılarak hedef platforma uygun formata (BC7, ASTC 4x4, ETC2) dönüştürülür. GPU’da mipmap oluşturma ve sıkıştırma yapılabilir.
+
+### 6.2. Prosedürel İçerik Düğüm Ağı
+
+Houdini benzeri prosedürel modelleme, Flux Graph’ın bir uzantısı olarak çalışır. Özel düğümler (`Scatter`, `AttributeNoise`, `ExtrudeAlongCurve` vb.) geometri üretir. Üretilen geometri, bir **prosedürel hazırlama** aşamasından geçer: kurala dayalı üretim sonucu yine sanal geometri meshlet’lerine dönüştürülür ve sahneye eklenir. Bu, editörde etkileşimli olarak çalışır; bir parametre değiştiğinde, sadece etkilenen meshlet’ler yeniden üretilir.
+
+---
+
+## 7. Editör Mimarisi – Motorun Kendisini Kullanan GPU Arayüzü
+
+### 7.1. Editor UI – GPUI Tabanlı Görsel Arayüz
+
+Elysium Editörü, artık **GPUI** (Zed tarafından geliştirilmiş, Rust’a özel GPU‑hızlandırmalı hibrit anlık/retained mode UI kütüphanesi) üzerine kuruludur. Mimari, önceki sıfırdan yazılmış `elysium-ui` katmanını koruyarak, dış kullanıcı arayüzünü GPUI’nin fat pointer / Entity modeliyle yönetir:
+
+- **Application / View Modeli:** Tüm editor panelleri (Hierarchy, Inspector, Viewport, Console, Toolbar) GPUI `Render` trait’ini uygulayan View’lar (ör. `ElysiumApp`) olarak tanımlanır. Her kare GPUI, View’ların `render()` metodunu çağırarak UI ağacını yeniden kurar.
+- **Tailwind‑Style Layout:** `div()`, `flex()`, `px_4()`, `bg()`, `border_1()`, `rounded_sm()` gibi zincirleme builder API’leri ile panel yerleşimi ve stil tema tanımlanır.
+- **Event & Interaction:** GPUI `ClickEvent`, `Hover`, `Focus` sistemleri üzerinden buton, checkbox, drag‑float gibi widget davranışları doğal olarak desteklenir.
+- **Custom 3D Viewport:** Eski `UiRenderer` / `UiCommandList` boru hattı, `elysium-ui` kaynaklarında korunur ancak ana editor artık GPUI üzerinden çalışır; 3D viewport içeriği ileride GPUI `paint_quad` veya dış bir texture cache üzerinden entegre edilecektir.
+- **Input Routing:** GPUI, klavye kısayolları (`KeyBinding`), eylem zincirleri (`actions`) ve pencere yönetimini kendi event loop’u üzerinden sunar; `winit` artık doğrudan kullanıcı kodunda görünmez.
+
+### 7.2. Sahne Penceresi ve Araç Altyapısı
+
+- **Sahne Penceresi:** Motorun ana render pipeline’ını kullanan bir “render target” arayüz bileşenidir. Fare tıklamaları, ışın‑üçgen kesişim testi (GPU’da yapılan) ile varlık seçimine dönüştürülür.
+- **Dönüştürme Gizmo’su (Transform Gizmo):** Öteleme, döndürme ve ölçekleme için görsel bir araç. Gizmo’nun kendisi ECS varlıklarıdır; seçili objeye göre konumlanır ve etkileşim, bir `GizmoSystem` tarafından işlenir. Çoklu eksen kısıtlamaları ve snapping özellikleri mevcuttur.
+- **Araç Sistemi (Tool System):** Her araç (sculpt, paint, extrude) bir Rust `trait`’i uygular: `activate()`, `deactivate()`, `handle_input()`. Motor, aynı anda tek bir aracın aktif olmasını sağlar; araçlar arası geçiş, kullanıcıya hiçbir kopukluk hissettirmez çünkü aynı ECS dünyasını paylaşırlar.
+
+### 7.3. Geri Alma (Undo/Redo) Çerçevesi
+
+Tüm düzenleme işlemleri, **eylem (action)** nesneleri olarak kaydedilir. Her eylem, yaptığı değişikliğin tersini uygulayabilen bir `reverse()` metoduna sahiptir. Eylemler, bellek içi bir yığında tutulur. Dünya durumunun tamamını kopyalamak yerine sadece değişen veriler (delta) saklanır; bu, saniyeler süren sculpt fırçalarının geri alınabilmesini sağlar.
+
+---
+
+## 8. Çok Oyunculu İşbirliği – CRDT Tabanlı Gerçek Zamanlı Düzenleme
+
+### 8.1. Çakışmasız Veri Tipleri (CRDT)
+
+Projenin tüm varlık hiyerarşisi, sahneler ve hatta Flux Graph düğümleri, **CRDT** (Conflict‑free Replicated Data Type) yapılarıyla temsil edilir. Özellikle **Yjs** benzeri bir list/rich‑text CRDT’nin Rust’ta yeniden implementasyonu kullanılır.
+
+- **Eşzamanlı Düzenleme:** İki kullanıcı aynı anda aynı nesneyi hareket ettirirse, CRDT çakışmayı otomatik olarak çözer (genellikle son yazan kazanır ancak kayıpsız birleştirme). Aynı sahnenin farklı bölgelerinde yapılan değişiklikler sorunsuzca birleşir.
+- **Ağ Katmanı:** Değişiklikler, WebRTC (veya UDP üzerinde güvenilir katman) aracılığıyla eşler arasında yayılır. Motor, bir `CRDTNetworkSystem` ile gelen güncellemeleri ECS dünyasına uygular.
+- **Yetki ve Kilitleme:** İsteğe bağlı olarak, belirli bir objeyi düzenleme yetkisi bir kullanıcıya kilitlenebilir. Bu, CRDT’nin üzerine inşa edilmiş bir “locking service” ile yönetilir.
+
+---
+
+## 9. Yapay Zekâ ve Makine Öğrenmesi Entegrasyonu
+
+### 9.1. ONNX Runtime Yerleştirme
+
+Motor, **onnxruntime** kütüphanesini Rust bağlamalarıyla içerir. ML modelleri, ECS’de `MLModel` komponenti ile varlıklara bağlanır. Çıkarım (inference), motorun iş parçacığı havuzunda ve/veya GPU’da (DirectML, CUDA, Metal Performance Shaders aracılığıyla) gerçekleştirilir.
+
+### 9.2. Pekiştirmeli Öğrenme NPC’leri
+
+- **Eğitim Ortamı:** Motor, oyun dünyasının bir kopyasını başsız (headless) modda, saniyede binlerce kare hızında çalıştırabilir. Eğitim süreci, Flux Graph ile yapılandırılır: ajanın gözlemleri (görme, mesafe sensörleri), eylemleri ve ödül fonksiyonu görsel olarak tanımlanır.
+- **Model Dağıtımı:** Eğitilen ONNX modeli, karakterin AI davranış ağacının bir “RL” düğümüne yüklenir. Bu düğüm, her karar noktasında modeli çalıştırır ve en iyi eylemi seçer.
+
+### 9.3. AI Destekli Animasyon ve Görüntü İşleme
+
+- **Tek Kameradan Hareket Yakalama:** Editör, bir web kamerası görüntüsünü alır, yerleşik MediaPipe‑benzeri bir model (Rust’ta `ort` ile) kullanarak 2B pozları çıkarır ve bunları 3B karakter rig’ine yükseltir.
+- **Doku Sentezi ve Inpainting:** Sculpt yüzeyindeki boşlukları doldurmak veya malzemeleri harmanlamak için bir diffusion modeli opsiyonel olarak çalıştırılabilir. Bu, arka planda asenkron bir işlemdir.
+
+---
+
+## 10. Platform Soyutlama ve Yayınlama
+
+### 10.1. Derleme ve Paketleme Altyapısı
+
+Motor, `cargo` ve özel yapı betikleri ile çapraz derleme yapar. Her platform için gerekli shader varyantları, varlık pişirme ayarları ve kütüphane bağlamaları otomatik olarak seçilir. Son kullanıcı, “Build” menüsünden hedefi seçer; motor, projeyi bir **kendi kendine yeten çalıştırılabilir** veya platforma özel paket (`.apk`, `.ipa`, `.msix`, PS5 pkg) olarak üretir.
+
+### 10.2. Bulut ve Yayın Hizmetleri
+
+- **Bulut Oyun Entegrasyonu:** Yayınlama sihirbazı, NVIDIA GeForce NOW ve Xbox Cloud Gaming için gerekli konteyner imajını otomatik oluşturur.
+- **Doğrudan Mağaza Yükleme:** Steamworks, Epic Games Store, App Store Connect gibi hizmetlere yönelik API’ler Rust ile sarılmıştır; başlık, başarılar ve yükleme işlemleri editör içinden yönetilir.
+
+---
+
+## 11. Sonuç: Sıfır Kod ile Sonsuz Yaratıcılık
+
+Elysium Motoru’nun bu derinlemesine mimarisi, Rust’ın bellek güvenliği ve performansının, en ileri render ve simülasyon teknikleriyle birleştiğinde, **kod yazmayı tamamen ortadan kaldıran ama hiçbir performans veya kalite kısıtlaması getirmeyen** bir oyun motorunun mümkün olduğunu kanıtlar. Her bir alt sistem, yalnızca teknik bir şaheser değil, aynı zamanda sanatçıya en doğal aracı sunmak üzere tasarlanmıştır. Artık bir fikri olan herkes, doğrudan motorun içine girip, onu gerçeğe dönüştürmeye başlayabilir.

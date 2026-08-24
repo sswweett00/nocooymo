@@ -1,0 +1,400 @@
+pub mod math;
+pub mod alloc;
+
+/// 16 KiB chunk sayfası — WorldAllocator ve Chunk tarafından kullanılır.
+pub const CHUNK_SIZE: usize = 16 * 1024;
+
+pub mod archetype;
+pub mod audio;
+pub mod camera;
+pub mod chunk;
+pub mod command;
+pub mod component;
+pub mod entity;
+pub mod hierarchy;
+pub mod input;
+pub mod scheduler;
+pub mod serialization;
+pub mod storage;
+pub mod terrain;
+pub mod transform;
+pub mod world;
+pub mod ui;
+pub mod asset;
+pub mod config;
+pub mod logging;
+pub mod performance;
+pub mod data_structures;
+pub mod physics_world;
+pub mod scripting;
+pub mod network;
+pub mod ml;
+pub mod particle_systems;
+pub mod audio_system;
+pub mod animation_system;
+
+pub use animation_system::*;
+pub use archetype::*;
+pub use audio::*;
+pub use camera::*;
+pub use chunk::*;
+pub use command::*;
+pub use component::*;
+pub use entity::*;
+pub use hierarchy::*;
+pub use input::*;
+pub use scheduler::*;
+pub use serialization::*;
+pub use storage::*;
+pub use terrain::*;
+pub use transform::*;
+pub use world::*;
+pub use ui::*;
+pub use asset::*;
+pub use config::*;
+pub use logging::*;
+pub use performance::*;
+pub use data_structures::*;
+pub use physics_world::*;
+pub use scripting::*;
+pub use network::*;
+pub use ml::*;
+pub use particle_systems::*;
+pub use audio_system::*;
+
+// Ortak olarak kullanılan yardımcı türler ve sabitler
+pub mod prelude {
+    pub use crate::{
+        // Temel yapılar
+        Entity,
+        Transform,
+        World,
+        CommandBuffer,
+        Schedule,
+        System,
+        Component,
+        
+        // Girdi sistemi
+        InputManager,
+        KeyCode,
+        KeyState,
+        InputAction,
+        
+        // Kamera sistemi
+        Camera,
+        CameraProjection,
+        FreeCameraController,
+        
+        // UI sistemi
+        UiElement,
+        UiElementType,
+        
+        // Ses sistemi
+        AudioSource,
+        AudioListener,
+        AudioManager,
+        
+        // Animasyon sistemi
+        AnimationPlayer,
+        AnimationClip,
+        
+        // Partikül sistemi
+        ParticleSystem,
+        Particle,
+        
+        // Ağ sistemi
+        NetworkServer,
+        NetworkClient,
+        NetworkMessage,
+        
+        // ML sistemi
+        MlAgent,
+        SimpleNeuralNetwork,
+        
+        // Zamanlayıcı sistemi
+        ScheduleStage,
+        TimeSystem,
+        
+        // Komut sistemi
+        CommandSystem,
+    };
+}
+
+// Ortak olarak kullanılan yardımcı fonksiyonlar
+    pub fn create_default_world() -> World {
+        World::new()
+    }
+
+// Hata işleme için ortak sonuç türü
+#[derive(Debug)]
+pub enum EngineResult<T> {
+    Ok(T),
+    Err(EngineError),
+}
+
+#[derive(Debug)]
+pub enum EngineError {
+    InitializationError(String),
+    ResourceError(String),
+    IOError(std::io::Error),
+    SerializationError(String),
+    ValidationError(String),
+    RuntimeError(String),
+}
+
+impl<T> std::convert::From<EngineError> for EngineResult<T> {
+    fn from(error: EngineError) -> Self {
+        EngineResult::Err(error)
+    }
+}
+
+impl<T> EngineResult<T> {
+    pub fn is_ok(&self) -> bool {
+        matches!(self, EngineResult::Ok(_))
+    }
+    
+    pub fn is_err(&self) -> bool {
+        matches!(self, EngineResult::Err(_))
+    }
+    
+    pub fn unwrap(self) -> T {
+        match self {
+            EngineResult::Ok(value) => value,
+            EngineResult::Err(error) => panic!("EngineResult unwrap error: {:?}", error),
+        }
+    }
+    
+    pub fn expect(self, msg: &str) -> T {
+        match self {
+            EngineResult::Ok(value) => value,
+            EngineResult::Err(error) => panic!("{}: {:?}", msg, error),
+        }
+    }
+    
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            EngineResult::Ok(value) => value,
+            EngineResult::Err(_) => default,
+        }
+    }
+    
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> EngineResult<U> {
+        match self {
+            EngineResult::Ok(value) => EngineResult::Ok(f(value)),
+            EngineResult::Err(error) => EngineResult::Err(error),
+        }
+    }
+    
+    pub fn and_then<U, F: FnOnce(T) -> EngineResult<U>>(self, f: F) -> EngineResult<U> {
+        match self {
+            EngineResult::Ok(value) => f(value),
+            EngineResult::Err(error) => EngineResult::Err(error),
+        }
+    }
+}
+
+impl From<std::io::Error> for EngineError {
+    fn from(error: std::io::Error) -> Self {
+        EngineError::IOError(error)
+    }
+}
+
+impl From<bincode::Error> for EngineError {
+    fn from(error: bincode::Error) -> Self {
+        EngineError::SerializationError(format!("{:?}", error))
+    }
+}
+
+impl From<serde_json::Error> for EngineError {
+    fn from(error: serde_json::Error) -> Self {
+        EngineError::SerializationError(format!("{:?}", error))
+    }
+}
+
+// Temel oyun döngüsü için yapı
+pub struct GameLoop {
+    pub running: bool,
+    pub target_fps: f64,
+    pub frame_time: std::time::Duration,
+    pub last_update: std::time::Instant,
+    pub accumulator: std::time::Duration,
+    pub max_frame_skip: u32,
+}
+
+impl GameLoop {
+    pub fn new(target_fps: f64) -> Self {
+        Self {
+            running: true,
+            target_fps,
+            frame_time: std::time::Duration::from_secs_f64(1.0 / target_fps),
+            last_update: std::time::Instant::now(),
+            accumulator: std::time::Duration::new(0, 0),
+            max_frame_skip: 5,
+        }
+    }
+    
+    pub fn update<F>(&mut self, mut update_func: F) -> bool
+    where
+        F: FnMut(f32),
+    {
+        if !self.running {
+            return false;
+        }
+        
+        let now = std::time::Instant::now();
+        let delta_time = now - self.last_update;
+        self.last_update = now;
+        
+        self.accumulator += delta_time;
+        
+        let mut updates = 0;
+        while self.accumulator >= self.frame_time && updates < self.max_frame_skip {
+            let dt = self.frame_time.as_secs_f32();
+            update_func(dt);
+            self.accumulator -= self.frame_time;
+            updates += 1;
+        }
+        
+        true
+    }
+    
+    pub fn stop(&mut self) {
+        self.running = false;
+    }
+    
+    pub fn start(&mut self) {
+        self.running = true;
+        self.last_update = std::time::Instant::now();
+    }
+    
+    pub fn set_target_fps(&mut self, fps: f64) {
+        self.target_fps = fps;
+        self.frame_time = std::time::Duration::from_secs_f64(1.0 / fps);
+    }
+    
+    pub fn get_target_fps(&self) -> f64 {
+        self.target_fps
+    }
+    
+    pub fn get_frame_time(&self) -> std::time::Duration {
+        self.frame_time
+    }
+    
+    pub fn get_delta_time(&self) -> f32 {
+        self.frame_time.as_secs_f32()
+    }
+}
+
+// Olay sistemi için ortak yapılar
+pub trait EventHandler<T> {
+    fn handle(&mut self, event: T);
+}
+
+pub struct EventDispatcher<T> {
+    handlers: Vec<Box<dyn EventHandler<T>>>,
+}
+
+impl<T> EventDispatcher<T> {
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+        }
+    }
+    
+    pub fn add_handler(&mut self, handler: Box<dyn EventHandler<T>>) {
+        self.handlers.push(handler);
+    }
+    
+    pub fn dispatch(&mut self, event: T) 
+    where
+        T: Clone,
+    {
+        for handler in &mut self.handlers {
+            handler.handle(event.clone());
+        }
+    }
+    
+    pub fn clear_handlers(&mut self) {
+        self.handlers.clear();
+    }
+    
+    pub fn handler_count(&self) -> usize {
+        self.handlers.len()
+    }
+}
+
+// Kaynak yönetimi için ortak yapı
+pub struct ResourceManager<T> {
+    resources: std::collections::HashMap<String, T>,
+    loaders: std::collections::HashMap<String, Box<dyn Fn(&str) -> Option<T>>>,
+}
+
+impl<T> ResourceManager<T> {
+    pub fn new() -> Self {
+        Self {
+            resources: std::collections::HashMap::new(),
+            loaders: std::collections::HashMap::new(),
+        }
+    }
+    
+    pub fn register_loader<F>(&mut self, extension: &str, loader: F)
+    where
+        F: Fn(&str) -> Option<T> + 'static,
+    {
+        self.loaders.insert(extension.to_string(), Box::new(loader));
+    }
+    
+        pub fn load(&mut self, name: &str, path: &str) -> Option<&T> {
+        if self.resources.contains_key(name) {
+            return self.resources.get(name);
+        }
+
+        // Uzantıyı al ve uygun yükleyiciyi bul
+        if let Some(ext) = std::path::Path::new(path).extension().and_then(|s| s.to_str()) {
+            if let Some(loader) = self.loaders.get(ext) {
+                if let Some(resource) = loader(path) {
+                    self.resources.insert(name.to_string(), resource);
+                    return self.resources.get(name);
+                }
+            }
+        }
+
+        None
+    }
+    
+    pub fn get(&self, name: &str) -> Option<&T> {
+        self.resources.get(name)
+    }
+    
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut T> {
+        self.resources.get_mut(name)
+    }
+    
+    pub fn insert(&mut self, name: String, resource: T) {
+        self.resources.insert(name, resource);
+    }
+    
+    pub fn remove(&mut self, name: &str) -> Option<T> {
+        self.resources.remove(name)
+    }
+    
+    pub fn contains(&self, name: &str) -> bool {
+        self.resources.contains_key(name)
+    }
+    
+    pub fn clear(&mut self) {
+        self.resources.clear();
+    }
+    
+    pub fn len(&self) -> usize {
+        self.resources.len()
+    }
+    
+    pub fn is_empty(&self) -> bool {
+        self.resources.is_empty()
+    }
+    
+    pub fn keys(&self) -> std::collections::hash_map::Keys<String, T> {
+        self.resources.keys()
+    }
+}

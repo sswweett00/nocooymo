@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/elysium-core",
+    "crates/elysium-render",
+    "crates/elysium-physics",
+    "crates/elysium-flux",
+    "crates/elysium-asset",
+    "crates/elysium-ui",
+    "crates/elysium-editor",
+    "crates/elysium-net",
+    "crates/elysium-ml",
+    "crates/elysium",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Elysium Engine Contributors"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+elysium-core = { path = "crates/elysium-core" }
+gpui = { version = "0.2", default-features = false, features = ["font-kit", "x11"] }
+elysium-render = { path = "crates/elysium-render" }
+elysium-physics = { path = "crates/elysium-physics" }
+elysium-flux = { path = "crates/elysium-flux" }
+elysium-asset = { path = "crates/elysium-asset" }
+elysium-ui = { path = "crates/elysium-ui" }
+elysium-editor = { path = "crates/elysium-editor" }
+elysium-net = { path = "crates/elysium-net" }
+elysium-ml = { path = "crates/elysium-ml" }
+
+rayon = "1.10"
+rkyv = { version = "0.8", features = ["bytecheck"] }
+bytemuck = { version = "1.21", features = ["derive"] }
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wgpu = "0.19"
+winit = "0.30"
+nalgebra = { version = "0.33", features = ["serde-serialize"] }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "fs", "time"] }
+hashbrown = "0.15"
+smallvec = { version = "1.14", features = ["union"] }
+bitflags = "2.9"
+parking_lot = "0.12"
+glam = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+md5 = "0.7"
+bincode = "1.3"
+num_cpus = "1.16"
+futures = "0.3"
+ndarray = { version = "0.16", features = ["serde"] }
+rand = "0.8"
+image = { version = "0.25", features = ["png", "jpeg"] }
+pollster = "0.3"
+fontdue = "0.8"

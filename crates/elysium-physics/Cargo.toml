@@ -1,0 +1,21 @@
+[package]
+name = "elysium-physics"
+description = "Tremor physics engine (Mimari §3.1) — XPBD solver, broad/narrow phase, joints, fluids, vehicles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nalgebra = { workspace = true }
+tracing = { workspace = true }
+
+# Optional ECS integration. The core engine is self-contained and does not
+# require the ECS; enable this feature to expose the `TremorSystem` adapter
+# that bridges into the elysium-core schedule.
+elysium-core = { workspace = true, optional = true }
+
+[features]
+default = []
+ecs-integration = ["dep:elysium-core"]

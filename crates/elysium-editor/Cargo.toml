@@ -1,0 +1,14 @@
+[package]
+name = "elysium-editor"
+description = "Elysium Editor: scene view, gizmos, tools (Mimari §7)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+elysium-core.workspace = true
+elysium-ui.workspace = true
+elysium-render.workspace = true
+tracing.workspace = true
