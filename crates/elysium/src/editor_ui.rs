@@ -81,10 +81,8 @@ impl UiFont {
 
 // ─────────────────────────────────────────────────────────── Palet
 
-pub const COL_BG: [u8; 4] = [30, 30, 30, 255];
 pub const COL_PANEL: [u8; 4] = [37, 37, 38, 255];
 pub const COL_HEADER: [u8; 4] = [51, 51, 51, 255];
-pub const COL_VIEWPORT: [u8; 4] = [10, 12, 18, 255];
 pub const COL_SELECT: [u8; 4] = [9, 71, 113, 255];
 pub const COL_HOVER: [u8; 4] = [42, 45, 46, 255];
 pub const COL_BUTTON: [u8; 4] = [55, 55, 58, 255];
@@ -189,6 +187,7 @@ pub fn draw_ui(
     st: &crate::EditorShared,
     layout: &Layout,
     hover_btn: Option<&str>,
+    status: Option<(&str, bool)>, // (mesaj, başarılı mı)
 ) -> UiLayout {
     let mut ui = UiLayout::default();
 
@@ -199,9 +198,9 @@ pub fn draw_ui(
     rect(fb, layout.top_bar, COL_HEADER);
     border(fb, layout.top_bar, COL_BORDER);
     font.draw_text(fb, 12, 10, 17, COL_TEXT, "ELYASIUM ENGINE");
-    let status = if st.playing { "● PLAYING" } else { "■ EDIT MODE" };
+    let mode_text = if st.playing { "● PLAYING" } else { "■ EDIT MODE" };
     let status_col = if st.playing { COL_TEXT_GREEN } else { COL_TEXT_DIM };
-    font.draw_text(fb, 190, 11, 14, status_col, status);
+    font.draw_text(fb, 190, 11, 14, status_col, mode_text);
     let fps_text = format!("FPS {:5.1}   FRAME {}", st.fps, st.frame_count);
     let fw = font.measure(14, &fps_text) as i32;
     font.draw_text(fb, win_w - RIGHT_W - fw - 20, 11, 14, COL_TEXT_DIM, &fps_text);
@@ -339,6 +338,7 @@ pub fn draw_ui(
     let bh = 32;
     let mut by = layout.right_panel[1] + hdr_h + 12;
 
+    #[allow(unused_assignments)]
     macro_rules! tool_button {
         ($id:expr, $label:expr, $color:expr) => {{
             let hovered = hover_btn == Some($id);
@@ -366,6 +366,13 @@ pub fn draw_ui(
     tool_button!("add_capsule", "+ Capsule", COL_BUTTON);
     tool_button!("del", "🗑  Delete Selected", COL_BUTTON);
     by += 6;
+    font.draw_text(fb, bx, by, 12, COL_TEXT_DIM, "— SCENE —");
+    by += 18;
+    tool_button!("save", "💾  Save Scene", COL_BUTTON);
+    tool_button!("load", "📂  Load Scene", COL_BUTTON);
+    tool_button!("undo", if st.can_undo { "↶  Undo" } else { "↶  Undo (yok)" }, COL_BUTTON);
+    tool_button!("redo", if st.can_redo { "↷  Redo" } else { "↷  Redo (yok)" }, COL_BUTTON);
+    by += 6;
     font.draw_text(fb, bx, by, 12, COL_TEXT_DIM, "— VIEW —");
     by += 18;
     tool_button!("reset_cam", "⟲  Reset Camera", COL_BUTTON);
@@ -378,14 +385,28 @@ pub fn draw_ui(
     // ── Alt bar
     rect(fb, layout.bottom_bar, COL_HEADER);
     border(fb, layout.bottom_bar, COL_BORDER);
-    font.draw_text(
-        fb,
-        12,
-        win_h - BOTTOM_BAR_H + 7,
-        13,
-        COL_TEXT_DIM,
-        "LMB orbit · Wheel zoom · Click select · W A S D move player · SPACE play/pause · DEL remove",
-    );
+    match status {
+        Some((msg, ok)) => {
+            font.draw_text(
+                fb,
+                12,
+                win_h - BOTTOM_BAR_H + 7,
+                13,
+                if ok { COL_TEXT_GREEN } else { [240, 140, 100, 255] },
+                msg,
+            );
+        }
+        None => {
+            font.draw_text(
+                fb,
+                12,
+                win_h - BOTTOM_BAR_H + 7,
+                13,
+                COL_TEXT_DIM,
+                "LMB orbit · Wheel zoom · Click select · W A S D move · SPACE play · Ctrl+Z undo · Ctrl+Y redo",
+            );
+        }
+    }
     let ent_text = format!("entities: {}", st.scene.objects.len());
     font.draw_text(fb, win_w - 130, win_h - BOTTOM_BAR_H + 7, 13, COL_TEXT_DIM, &ent_text);
 

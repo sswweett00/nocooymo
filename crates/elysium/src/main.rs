@@ -3,6 +3,7 @@
 
 mod renderer;
 mod editor_ui;
+mod history;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -16,7 +17,6 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
-use wgpu::util::DeviceExt;
 
 use renderer::{
     Camera, EntityTeam, GeometryType, Scene, SoftwareRenderer,
@@ -24,6 +24,7 @@ use renderer::{
 use editor_ui::{
     compute_layout, draw_ui, EditComp, UiDragHandle, UiFont, UiLayout,
 };
+use history::History;
 
 // ─────────────────────────────────────────────────────────── Editor state
 
@@ -34,6 +35,8 @@ pub struct EditorShared {
     pub show_grid: bool,
     pub frame_count: u64,
     pub fps: f32,
+    pub can_undo: bool,
+    pub can_redo: bool,
     /// Inspector sürükleme hedefi
     pub active_drag: Option<UiDragHandle>,
 }
@@ -61,6 +64,11 @@ struct EditorApp {
     mouse_down: bool,
     last_mouse: Option<(f64, f64)>,
     orbiting: bool,
+
+    // geçmiş / durum mesajı
+    history: History,
+    status_message: String,
+    status_until: Instant,
 
     // zamanlama
     last_frame: Instant,
@@ -97,6 +105,8 @@ impl EditorApp {
                 show_grid: true,
                 frame_count: 0,
                 fps: 60.0,
+                can_undo: false,
+                can_redo: false,
                 active_drag: None,
             },
             renderer: SoftwareRenderer::new(800, 600),
@@ -107,6 +117,9 @@ impl EditorApp {
             mouse_down: false,
             last_mouse: None,
             orbiting: false,
+            history: History::new(),
+            status_message: String::new(),
+            status_until: Instant::now(),
             last_frame: Instant::now(),
             fps_ema: 60.0,
         }
@@ -156,7 +169,7 @@ impl EditorApp {
         self.config = Some(config);
         self.create_texture(size.width.max(1), size.height.max(1));
         let device = self.device.as_ref().unwrap();
-        let queue = self.queue.as_ref().unwrap();
+        let _queue = self.queue.as_ref().unwrap();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -336,7 +349,8 @@ impl EditorApp {
                 } else if dist <= 1.2 {
                     obj.health = (obj.health - 25.0 * dt).max(0.0);
                     if obj.health <= 0.0 {
-                        // Respawn uzak noktada
+                        // Patlama efekti + uzakta respawn
+                        self.renderer.spawn_particles(obj.transform.position, 30, [1.0, 0.4, 0.15]);
                         let ang = rand::random::<f32>() * std::f32::consts::TAU;
                         obj.transform.position = Vec3::new(ang.cos() * 14.0, 1.0, ang.sin() * 14.0);
                         obj.health = obj.max_health;
@@ -360,6 +374,8 @@ impl EditorApp {
             self.fps_ema = self.fps_ema * 0.9 + (1.0 / dt) * 0.1;
         }
         self.update_game(dt);
+        self.state.can_undo = self.history.can_undo();
+        self.state.can_redo = self.history.can_redo();
 
         let win_w = self.renderer.width as i32;
         let win_h = self.renderer.height as i32;
@@ -378,6 +394,11 @@ impl EditorApp {
 
         // UI overlay
         let hover = self.last_mouse.map(|(x, y)| self.ui_layout.button_at(x, y)).flatten();
+        let status: Option<(String, bool)> = if Instant::now() < self.status_until {
+            Some((self.status_message.clone(), !self.status_message.contains("hatası")))
+        } else {
+            None
+        };
         if let Some(font) = &mut self.font {
             let st = &self.state;
             draw_ui(
@@ -388,6 +409,7 @@ impl EditorApp {
                 st,
                 &layout,
                 hover.as_deref(),
+                status.as_ref().map(|(m, ok)| (m.as_str(), *ok)),
             );
         }
 
@@ -395,9 +417,6 @@ impl EditorApp {
         if let Some(w) = &self.window { w.request_redraw(); }
     }
 
-    fn hover_button(&self) -> Option<String> {
-        self.last_mouse.and_then(|(x, y)| self.ui_layout.button_at(x, y))
-    }
 
     fn present(&mut self) {
         let (device, queue, surface, config) = match (
@@ -471,6 +490,7 @@ impl EditorApp {
         }
         // Inspector sürükleme başlat
         if let Some(drag) = self.ui_layout.drag_at(x, y) {
+            self.history.push(&self.state.scene);
             self.state.active_drag = Some(drag);
             self.mouse_down = true;
             return;
@@ -498,7 +518,21 @@ impl EditorApp {
         self.mouse_down = true;
     }
 
+
+    fn set_status(&mut self, msg: impl Into<String>) {
+        self.status_message = msg.into();
+        self.status_until = Instant::now() + std::time::Duration::from_secs(2);
+    }
+
     fn handle_button(&mut self, id: &str) {
+        // Sahne değiştiren işlemlerden önce anlık görüntü al
+        let snapshot_ops = [
+            "add_cube", "add_sphere", "add_cylinder", "add_capsule", "del",
+            "save", "load",
+        ];
+        if snapshot_ops.contains(&id) {
+            self.history.push(&self.state.scene);
+        }
         match id {
             "play" => self.state.playing = true,
             "pause" => self.state.playing = false,
@@ -520,12 +554,47 @@ impl EditorApp {
             }
             "del" => {
                 if let Some(id) = self.state.selected {
+                    let pos = self.state.scene.get_object(id).map(|o| o.transform.position);
+                    if let Some(pos) = pos {
+                        self.renderer.spawn_particles(pos, 40, [1.0, 0.6, 0.2]);
+                    }
                     self.state.scene.objects.retain(|o| o.id != id);
                     self.state.selected = None;
+                    self.set_status("Varlık silindi");
                 }
             }
-            "reset_cam" => self.state.scene.camera = Camera::new(),
+            "reset_cam" => {
+                self.state.scene.camera = Camera::new();
+                self.set_status("Kamera sıfırlandı");
+            }
             "grid" => self.state.show_grid = !self.state.show_grid,
+            "save" => match self.state.scene.save_to_file("scene.json") {
+                Ok(()) => self.set_status("Sahne kaydedildi: scene.json"),
+                Err(e) => self.set_status(format!("Kaydetme hatası: {e}")),
+            },
+            "load" => match Scene::load_from_file("scene.json") {
+                Ok(scene) => {
+                    let n = scene.objects.len();
+                    self.state.scene = scene;
+                    self.state.selected = None;
+                    self.set_status(format!("Sahne yüklendi ({n} varlık)"));
+                }
+                Err(e) => self.set_status(format!("Yükleme hatası: {e}")),
+            },
+            "undo" => {
+                if self.history.undo(&mut self.state.scene) {
+                    self.set_status("Geri alındı");
+                } else {
+                    self.set_status("Geri alınacak işlem yok");
+                }
+            }
+            "redo" => {
+                if self.history.redo(&mut self.state.scene) {
+                    self.set_status("Yinelendi");
+                } else {
+                    self.set_status("Yinelenecek işlem yok");
+                }
+            }
             other => {
                 if let Some(ent_id) = other.strip_prefix("ent_").and_then(|s| s.parse::<usize>().ok()) {
                     self.state.selected = Some(ent_id);
@@ -585,6 +654,18 @@ impl EditorApp {
                 }
             }
             KeyCode::Escape if pressed => event_loop.exit(),
+            KeyCode::KeyZ if pressed => {
+                if self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight) {
+                    if self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight) {
+                        if self.history.redo(&mut self.state.scene) { self.set_status("Yinelendi"); }
+                    } else if self.history.undo(&mut self.state.scene) {
+                        self.set_status("Geri alındı");
+                    }
+                }
+            }
+            KeyCode::KeyY if pressed => {
+                if self.history.redo(&mut self.state.scene) { self.set_status("Yinelendi"); }
+            }
             _ => {}
         }
         if pressed {
@@ -611,7 +692,7 @@ impl ThenSetScale for usize {
 
 /// Ekran koordinatından dünya ray'i üretir (picking).
 fn screen_ray(cam: &Camera, ndc_x: f32, ndc_y: f32, aspect: f32) -> Option<(Vec3, Vec3)> {
-    use glam::{Mat4, Vec4};
+    use glam::Vec4;
     let proj = cam.projection_matrix(aspect);
     let view = cam.view_matrix();
     let inv_vp = (proj * view).inverse();

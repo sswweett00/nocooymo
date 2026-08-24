@@ -3,6 +3,9 @@
 /// GPUI'ın ImageSource ile gösterilmek üzere tasarlanmıştır.
 
 use core::fmt;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use serde::{Serialize, Deserialize};
 
@@ -282,14 +285,27 @@ fn capsule_mesh(slices: u32, half_height: f32) -> Mesh {
     Mesh { vertices: verts, triangles: tris }
 }
 
-fn build_mesh(geometry: GeometryType) -> Mesh {
-    match geometry {
-        GeometryType::Cube => cube_mesh(),
-        GeometryType::Sphere => sphere_mesh(16, 24),
-        GeometryType::Plane => plane_mesh(),
-        GeometryType::Cylinder => cylinder_mesh(20),
-        GeometryType::Capsule => capsule_mesh(20, 0.8),
-    }
+fn build_mesh(geometry: GeometryType) -> &'static Mesh {
+    static CACHE: OnceLock<Mutex<HashMap<u8, &'static Mesh>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = match geometry {
+        GeometryType::Cube => 0,
+        GeometryType::Sphere => 1,
+        GeometryType::Plane => 2,
+        GeometryType::Cylinder => 3,
+        GeometryType::Capsule => 4,
+    };
+    let mut map = cache.lock().unwrap();
+    *map.entry(key).or_insert_with(move || {
+        let mesh = match geometry {
+            GeometryType::Cube => cube_mesh(),
+            GeometryType::Sphere => sphere_mesh(16, 24),
+            GeometryType::Plane => plane_mesh(),
+            GeometryType::Cylinder => cylinder_mesh(20),
+            GeometryType::Capsule => capsule_mesh(20, 0.8),
+        };
+        Box::leak(Box::new(mesh))
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -711,9 +727,9 @@ impl SoftwareRenderer {
 
         let x0 = base_screen.x as i32;
         let y0 = (base_screen.y - 4.0).max(0.0) as i32;
-        let x1 = (base_screen.x + (end_screen.x - base_screen.x) * ratio).max(base_screen.x) as i32;
+        let _x1 = (base_screen.x + (end_screen.x - base_screen.x) * ratio).max(base_screen.x) as i32;
         let y1 = (base_screen.y + 4.0).min(self.height as f32) as i32;
-        let bar_h = (y1 - y0).max(1);
+        let _bar_h = (y1 - y0).max(1);
 
         let (r, g, b) = if ratio > 0.6 {
             (40, 200, 80)
@@ -813,7 +829,7 @@ impl SoftwareRenderer {
             let model = obj.transform.to_matrix();
             let mesh = build_mesh(obj.geometry);
             let selected = selected_id == Some(obj.id);
-            self.draw_mesh(&mesh, &model, &vp, obj.color, selected, false, obj.team, obj.health, obj.max_health);
+            self.draw_mesh(mesh, &model, &vp, obj.color, selected, false, obj.team, obj.health, obj.max_health);
 
             if selected {
                 self.draw_object_gizmo(&vp, obj.transform.position, 1.5);
@@ -829,10 +845,6 @@ impl SoftwareRenderer {
         &self.color
     }
 
-    pub fn get_image(&self) -> image::RgbaImage {
-        image::RgbaImage::from_raw(self.width, self.height, self.color.clone())
-            .expect("Failed to create image from buffer")
-    }
 }
 
 // ─────────────────────────────────────────────────────────── Scene
@@ -906,18 +918,53 @@ impl Scene {
     }
     
     pub fn serialize(&self) -> Result<String, serde_json::Error> {
-        Ok("{}".to_string())
+        #[derive(Serialize)]
+        struct SceneFile {
+            objects: Vec<SceneObject>,
+            camera_target: [f32; 3],
+            camera_yaw: f32,
+            camera_pitch: f32,
+            camera_distance: f32,
+        }
+        let file = SceneFile {
+            objects: self.objects.clone(),
+            camera_target: self.camera.target.to_array(),
+            camera_yaw: self.camera.yaw,
+            camera_pitch: self.camera.pitch,
+            camera_distance: self.camera.distance,
+        };
+        serde_json::to_string_pretty(&file)
     }
-    
-    pub fn deserialize(_json: &str) -> Result<Self, serde_json::Error> {
-        Ok(Self::default())
+
+    pub fn deserialize(json: &str) -> Result<Self, serde_json::Error> {
+        #[derive(Deserialize)]
+        struct SceneFile {
+            objects: Vec<SceneObject>,
+            camera_target: Option<[f32; 3]>,
+            camera_yaw: Option<f32>,
+            camera_pitch: Option<f32>,
+            camera_distance: Option<f32>,
+        }
+        let file: SceneFile = serde_json::from_str(json)?;
+        let mut scene = Scene::default();
+        scene.objects = file.objects;
+        scene.next_id = scene.objects.iter().map(|o| o.id).max().map(|m| m + 1).unwrap_or(1);
+        if let Some(t) = file.camera_target { scene.camera.target = Vec3::from_array(t); }
+        if let Some(y) = file.camera_yaw { scene.camera.yaw = y; }
+        if let Some(p) = file.camera_pitch { scene.camera.pitch = p; }
+        if let Some(d) = file.camera_distance { scene.camera.distance = d; }
+        Ok(scene)
     }
-    
-    pub fn save_to_file(&self, _path: &str) -> Result<(), Box<dyn std::error::Error>> {
+
+    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let json = self.serialize()?;
+        std::fs::write(path, json)?;
         Ok(())
     }
-    
-    pub fn load_from_file(_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::default())
+
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let json = std::fs::read_to_string(path)?;
+        let scene = Self::deserialize(&json)?;
+        Ok(scene)
     }
 }

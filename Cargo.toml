@@ -6,8 +6,6 @@ members = [
     "crates/elysium-physics",
     "crates/elysium-flux",
     "crates/elysium-asset",
-    "crates/elysium-ui",
-    "crates/elysium-editor",
     "crates/elysium-net",
     "crates/elysium-ml",
     "crates/elysium",
