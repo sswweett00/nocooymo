@@ -1,6 +1,6 @@
 [package]
 name = "elysium-ui"
-description = "Elysium GPU immediate-mode UI (Mimari §7.1)"
+description = "Elysium immediate-mode UI system (Mimari §7.1)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,17 +8,7 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-elysium-core.workspace = true
-elysium-render.workspace = true
-gpui.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
-smallvec.workspace = true
-bytemuck.workspace = true
-glam.workspace = true
-hashbrown.workspace = true
-parking_lot.workspace = true
-winit.workspace = true
 fontdue = "0.8"
-ttf-parser = "0.20"
-unicode-normalization = "0.1"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

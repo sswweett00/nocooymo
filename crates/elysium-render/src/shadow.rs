@@ -1,5 +1,4 @@
 use elysium_core::math::{Mat4, Vec3, Vec4};
-use std::collections::HashMap;
 
 /// Cascaded Shadow Map sistemi için cascade yapılandırması
 #[derive(Debug, Clone)]
@@ -63,10 +62,10 @@ impl CascadedShadowMap {
     }
 
     /// Cascade view-projection matrislerini hesaplar
-    pub fn update_cascades(&mut self, light_view: Mat4, projection: Mat4, camera_pos: Vec3, frustum_corners: &[Vec3; 8]) {
+    pub fn update_cascades(&mut self, light_view: Mat4, projection: Mat4, _camera_pos: Vec3, frustum_corners: &[Vec3; 8]) {
         for i in 0..self.config.num_cascades {
-            let cascade_near = self.cascades[i].world_split_distances[0];
-            let cascade_far = self.cascades[i].world_split_distances[1];
+            let _cascade_near = self.cascades[i].world_split_distances[0];
+            let _cascade_far = self.cascades[i].world_split_distances[1];
             
             // Cascade için frustum köşe noktalarını hesapla
             let mut cascade_corners = [Vec3::ZERO; 8];
@@ -93,7 +92,7 @@ impl CascadedShadowMap {
             
             // Cascade haritası çözünürlüğüne göre texel boyutunu hesapla
             let cascade_width = max_bound.x - min_bound.x;
-            let cascade_height = max_bound.y - min_bound.y;
+            let _cascade_height = max_bound.y - min_bound.y;
             self.cascades[i].texel_size = cascade_width / self.config.resolution as f32;
             
             // Ortalama bir pozisyon oluştur

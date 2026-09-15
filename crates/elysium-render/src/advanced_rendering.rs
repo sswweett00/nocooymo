@@ -1,5 +1,4 @@
-use elysium_core::math::{Mat4, Vec2, Vec3, Vec4};
-use std::collections::HashMap;
+use elysium_core::math::{Mat4, Vec3};
 
 /// Deferred shading için gbuffer yapıları
 #[derive(Debug, Clone)]
@@ -50,7 +49,7 @@ impl LightCulling {
         self.lights.push(light);
     }
 
-    pub fn cull_lights(&self, view_proj: Mat4) -> Vec<Light> {
+    pub fn cull_lights(&self, _view_proj: Mat4) -> Vec<Light> {
         // Basit bir culling algoritması
         self.lights.clone()
     }

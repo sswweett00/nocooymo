@@ -208,7 +208,7 @@ impl OrMap {
         self.values.insert(key, CrdtValue::new(value, timestamp));
     }
 
-    pub fn remove(&mut self, key: &str, timestamp: CausalTimestamp) {
+    pub fn remove(&mut self, key: &str, _timestamp: CausalTimestamp) {
         self.tombstones.insert(key.to_string());
         self.values.remove(key);
     }
@@ -266,7 +266,7 @@ impl CrdtManager {
 
     pub fn merge_entity(&mut self, entity: Entity, other_entity_map: &CrdtMap<elysium_core::Transform>) {
         // Fixed: avoid multiple mutable borrows
-        let timestamp_clone = self.timestamp.clone();
+        let _timestamp_clone = self.timestamp.clone();
         if let Some(entity_map) = self.entities.get_mut(&entity) {
             entity_map.merge(other_entity_map);
         } else {

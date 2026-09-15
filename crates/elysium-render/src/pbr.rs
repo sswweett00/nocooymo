@@ -1,4 +1,4 @@
-use elysium_core::math::{Vec3, Vec4};
+use elysium_core::math::Vec3;
 
 /// PBR rendering için gerekli olan BRDF (Bidirectional Reflectance Distribution Function) hesaplamaları
 pub struct PbrLighting;

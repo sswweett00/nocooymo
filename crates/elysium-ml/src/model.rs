@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use ndarray::{Array, Array1, Array2, ArrayD, IxDyn};
+use ndarray::{Array1, Array2};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 

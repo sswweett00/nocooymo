@@ -1,7 +1,6 @@
 use wgpu::*;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Gelişmiş render hedefi
 #[derive(Debug)]
@@ -528,7 +527,7 @@ impl GpuTimer {
         }
     }
 
-    pub fn write_timestamp(&self, encoder: &mut CommandEncoder, pass: &mut RenderPass, index: u32) {
+    pub fn write_timestamp(&self, _encoder: &mut CommandEncoder, pass: &mut RenderPass, index: u32) {
         pass.write_timestamp(&self.query_set, index);
     }
 }
@@ -565,7 +564,7 @@ impl BindlessDescriptorManager {
     }
 
     /// Texture'u bindless heap'e ekler ve indeks döndürür
-    pub fn register_texture(&mut self, device: &Device, texture_view: TextureView, hash: u64) -> Result<u32, String> {
+    pub fn register_texture(&mut self, _device: &Device, texture_view: TextureView, hash: u64) -> Result<u32, String> {
         // Eğer texture zaten kayıtlıysa, mevcut indeksi döndür
         if let Some(&index) = self.texture_index_map.get(&hash) {
             return Ok(index);
@@ -585,7 +584,7 @@ impl BindlessDescriptorManager {
     }
 
     /// Sampler'ı bindless heap'e ekler ve indeks döndürür
-    pub fn register_sampler(&mut self, device: &Device, sampler: Sampler, hash: u64) -> Result<u32, String> {
+    pub fn register_sampler(&mut self, _device: &Device, sampler: Sampler, hash: u64) -> Result<u32, String> {
         // Eğer sampler zaten kayıtlıysa, mevcut indeksi döndür
         if let Some(&index) = self.sampler_index_map.get(&hash) {
             return Ok(index);

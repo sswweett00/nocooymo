@@ -1,5 +1,3 @@
-use elysium_core::math::{Vec2, Vec3, Vec4};
-use std::collections::HashMap;
 
 /// Post-processing efektlerini tanımlar
 #[derive(Debug, Clone, Copy, PartialEq)]

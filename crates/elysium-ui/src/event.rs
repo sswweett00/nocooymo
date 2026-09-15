@@ -1,54 +1,86 @@
-use gpui::{ElementId, Point, Pixels, Size};
-use winit::event::WindowEvent;
-use glam::Vec2;
-use crate::{input::MouseButton, input::KeyCode, widgets::WidgetId};
+//! Olay sistemi — UI olay türleri ve işleme.
 
-#[derive(Debug, Clone)]
-pub enum UiMessage {
-    Click(ElementId),
-    Hover(ElementId),
-    Focus(ElementId),
-    Blur(ElementId),
-    KeyDown(KeyCode),
-    KeyUp(KeyCode),
-    MouseDown(MouseButton, Point<Pixels>),
-    MouseUp(MouseButton, Point<Pixels>),
-    MouseMove(Point<Pixels>),
-    MouseEnter(ElementId),
-    MouseLeave(ElementId),
-    TextInput(String),
-    Scroll(f32),
-    Resize(Size<Pixels>),
-    Close,
+use crate::types::{WidgetId, UiEvent};
+
+/// Klavye olayı
+#[derive(Clone, Debug)]
+pub struct KeyEvent {
+    pub key: String,
+    pub pressed: bool,
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
 }
 
-/// High-level UI events emitted by the immediate-mode system.
-#[derive(Debug, Clone)]
-pub enum UiEvent {
-    /// Raw window event passed through for external observers.
-    RawWindowEvent(WindowEvent),
-    /// Mouse moved to a new position.
-    MouseMove { pos: Vec2 },
-    /// Mouse button press/release.
-    MouseButton { button: MouseButton, pressed: bool, pos: Vec2 },
-    /// Keyboard key press/release.
-    Key { code: KeyCode, pressed: bool },
-    /// Text input from IME or direct character typing.
-    TextInput(String),
-    /// A button widget was activated (clicked).
-    ButtonClicked { id: WidgetId, label: String },
-    Click { element_id: String },
-    Hover { element_id: String },
-    Unhover { element_id: String },
-    Focus { element_id: String },
-    Blur { element_id: String },
-    TextChanged { element_id: String, text: String },
-    ValueChanged { element_id: String, value: f32 },
-    DragStart { element_id: String, start_pos: Vec2 },
-    DragEnd { element_id: String, end_pos: Vec2 },
-    MouseDownEvent { element_id: String, x: f32, y: f32 },
-    MouseUp { element_id: String, x: f32, y: f32 },
+/// Fare olayı
+#[derive(Clone, Debug)]
+pub struct MouseEvent {
+    pub x: f32,
+    pub y: f32,
+    pub button: MouseButton,
+    pub pressed: bool,
+    pub scroll_delta: f32,
 }
 
-// Re-export for easy access from the crate root.
-// re-export removed
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+/// Olay işleyici arayüzü
+pub trait EventHandler {
+    fn handle_event(&mut self, event: &UiEvent);
+}
+
+/// Olay bus'ı
+pub struct EventBus {
+    handlers: Vec<Box<dyn EventHandler>>,
+}
+
+impl EventBus {
+    pub fn new() -> Self { Self { handlers: Vec::new() } }
+    pub fn add_handler(&mut self, handler: Box<dyn EventHandler>) { self.handlers.push(handler); }
+    pub fn dispatch(&mut self, event: &UiEvent) {
+        for handler in &mut self.handlers { handler.handle_event(event); }
+    }
+    pub fn clear(&mut self) { self.handlers.clear(); }
+    pub fn handler_count(&self) -> usize { self.handlers.len() }
+}
+
+/// Basit log olay işleyicisi
+pub struct LogEventHandler;
+
+impl EventHandler for LogEventHandler {
+    fn handle_event(&mut self, event: &UiEvent) {
+        match event {
+            UiEvent::Click { id } => println!("[UI] Click on {:?}", id),
+            UiEvent::Hover { id } => println!("[UI] Hover on {:?}", id),
+            UiEvent::ValueChanged { id, .. } => println!("[UI] Value changed on {:?}", id),
+            UiEvent::TextInput { id, text } => println!("[UI] Text on {:?}: {}", id, text),
+            UiEvent::Scroll { id, delta } => println!("[UI] Scroll on {:?}: {}", id, delta),
+            UiEvent::Drag { id, delta } => println!("[UI] Drag on {:?}: {:?}", id, delta),
+            UiEvent::Resize { id, size } => println!("[UI] Resize on {:?}: {:?}", id, size),
+            UiEvent::KeyPress { key, ctrl, shift, alt } => {
+                println!("[UI] Key: {} (ctrl={}, shift={}, alt={})", key, ctrl, shift, alt);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::WidgetId;
+
+    #[test]
+    fn test_event_bus() {
+        let mut bus = EventBus::new();
+        bus.add_handler(Box::new(LogEventHandler));
+        assert_eq!(bus.handler_count(), 1);
+        bus.dispatch(&UiEvent::Click { id: WidgetId(1) });
+        bus.clear();
+        assert_eq!(bus.handler_count(), 0);
+    }
+}

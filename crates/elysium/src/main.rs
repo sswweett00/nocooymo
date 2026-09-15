@@ -1,9 +1,63 @@
 //! Elysium Engine — gerçek zamanlı oyun motoru editörü.
 //! winit + wgpu + yerleşik software rasterizer ve immediate-mode UI.
 
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
 mod renderer;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
 mod editor_ui;
 mod history;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod advanced_features;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod critical_systems;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod console;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod engine;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod editor_features;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod glb_import;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod gpu_compute;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod selection_gizmo;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod serialization;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod skeletal;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod texture;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod multiplayer;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod level_editor;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod websocket_transport;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod voice_chat;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod shader_editor;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod visual_script;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod anim_state_machine;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod particle_editor;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod audio_3d;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod event_bus;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod plugin_system;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod profiler;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod config_system;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod structured_logger;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod asset_pipeline;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -39,6 +93,33 @@ pub struct EditorShared {
     pub can_redo: bool,
     /// Inspector sürükleme hedefi
     pub active_drag: Option<UiDragHandle>,
+    pub console: console::Console,
+    pub console_input: String,
+    pub console_cursor: usize,
+    // GPU Compute durumu
+    pub particle_sim: gpu_compute::CpuParticleSimulator,
+    pub frustum_culler: gpu_compute::CpuFrustumCuller,
+    pub gpu_particles_active: usize,
+    pub gpu_culled: u32,
+    pub gpu_visible: u32,
+    // Skeletal animasyon durumu
+    pub skeleton: skeletal::Skeleton,
+    pub animation_clips: std::collections::HashMap<String, skeletal::AnimClip>,
+    pub blend_machine: skeletal::BlendStateMachine,
+    pub anim_playing: bool,
+    pub anim_time: f32,
+    pub anim_speed: f32,
+    pub skinned_mesh: Option<skeletal::SkinnedMesh>,
+    // Çoklu seçim ve gizmo durumu
+    pub selection: selection_gizmo::SelectionState,
+    pub gizmo: selection_gizmo::TransformGizmo,
+    // Yeni özellikler
+    pub particle_editor: editor_features::ParticleSystem,
+    pub terrain_editor: editor_features::TerrainEditor,
+    pub material_editor: editor_features::MaterialEditor,
+    pub scene_search: editor_features::SceneSearch,
+    pub timeline: editor_features::AnimationTimeline,
+    pub annotations: editor_features::AnnotationSystem,
 }
 
 struct EditorApp {
@@ -77,17 +158,7 @@ struct EditorApp {
 
 impl EditorApp {
     fn new() -> Self {
-        let mut scene = Scene::new();
-        let player = scene.add_object("Player".into(), GeometryType::Capsule, EntityTeam::Player);
-        scene.get_object_mut(player).unwrap().transform.position = Vec3::new(0.0, 1.0, 0.0);
-        for i in 0..3 {
-            let e = scene.add_object(format!("Enemy{}", i + 1), GeometryType::Cube, EntityTeam::Enemy);
-            let ang = i as f32 * 2.1;
-            scene.get_object_mut(e).unwrap().transform.position =
-                Vec3::new(ang.cos() * 6.0, 1.0, ang.sin() * 6.0);
-        }
-        scene.add_object("Ground".into(), GeometryType::Plane, EntityTeam::Neutral)
-            .then_set_scale(&mut scene);
+        let scene = create_demo_scene();
 
         Self {
             window: None,
@@ -108,6 +179,56 @@ impl EditorApp {
                 can_undo: false,
                 can_redo: false,
                 active_drag: None,
+                console: console::Console::new(),
+                console_input: String::new(),
+                console_cursor: 0,
+                particle_sim: gpu_compute::CpuParticleSimulator::with_capacity(8192),
+                frustum_culler: gpu_compute::CpuFrustumCuller::new(),
+                gpu_particles_active: 0,
+                gpu_culled: 0,
+                gpu_visible: 0,
+                // Skeletal animasyon başlat
+                skeleton: skeletal::Skeleton::demo_humanoid(),
+                animation_clips: {
+                    let mut clips = std::collections::HashMap::new();
+                    let idle = skeletal::create_idle_animation();
+                    clips.insert(idle.name.clone(), idle);
+                    let walk = skeletal::create_walk_animation();
+                    clips.insert(walk.name.clone(), walk);
+                    let run = skeletal::create_run_animation();
+                    clips.insert(run.name.clone(), run);
+                    clips
+                },
+                blend_machine: {
+                    let mut bsm = skeletal::BlendStateMachine::new();
+                    bsm.add_state(skeletal::AnimState::new("Idle"));
+                    bsm.add_state(skeletal::AnimState::new("Walk"));
+                    bsm.add_state(skeletal::AnimState::new("Run"));
+                    bsm
+                },
+                anim_playing: false,
+                anim_time: 0.0,
+                anim_speed: 1.0,
+                skinned_mesh: Some(skeletal::SkinnedMesh::demo_skinned_cube()),
+                selection: selection_gizmo::SelectionState::new(),
+                gizmo: selection_gizmo::TransformGizmo::new(),
+                particle_editor: editor_features::ParticleSystem::fire(),
+                terrain_editor: {
+                    let mut te = editor_features::TerrainEditor::default();
+                    te.generate_procedural(42, 4, 0.5);
+                    te.enabled = false;
+                    te
+                },
+                material_editor: editor_features::MaterialEditor::default(),
+                scene_search: editor_features::SceneSearch::default(),
+                timeline: editor_features::AnimationTimeline::default(),
+                annotations: {
+                    let mut ann = editor_features::AnnotationSystem::default();
+                    ann.add_note("Player spawn point", Vec3::new(0.0, 1.5, 0.0), editor_features::NoteColor::Green);
+                    ann.add_note("Boss arena boundary", Vec3::new(7.0, 0.0, 0.0), editor_features::NoteColor::Red);
+                    ann.add_note("Look here first!", Vec3::new(0.0, 3.0, -5.0), editor_features::NoteColor::Yellow);
+                    ann
+                },
             },
             renderer: SoftwareRenderer::new(800, 600),
             sampler: None,
@@ -357,6 +478,45 @@ impl EditorApp {
                     }
                 }
             }
+
+            // Fizik simülasyonu
+            st.scene.physics_step(dt);
+
+            // Skeletal animasyon güncelle
+            if st.anim_playing {
+                st.anim_time += dt * st.anim_speed;
+                st.blend_machine.update(dt);
+                st.blend_machine.apply_to_skeleton(&st.animation_clips, &mut st.skeleton);
+            }
+
+            // GPU parçacık simülasyonu (CPU fallback)
+            st.particle_sim.params.time += dt;
+            st.particle_sim.simulate(dt);
+            st.gpu_particles_active = st.particle_sim.alive_count();
+        }
+
+        // Frustum culling her kare çalışır
+        {
+            let aspect = self.renderer.viewport_size.0 as f32 / self.renderer.viewport_size.1 as f32;
+            let view = st.scene.camera.view_matrix();
+            let proj = st.scene.camera.projection_matrix(aspect);
+            let vp = proj * view;
+            let cols = vp.to_cols_array();
+            let mut view_proj = [[0.0f32; 4]; 4];
+            for r in 0..4 { for c in 0..4 { view_proj[r][c] = cols[r * 4 + c]; } }
+            st.frustum_culler.extract_frustum_planes(&view_proj);
+            // Basit meshlet verileri oluştur (her obje = 1 meshlet)
+            let meshlets: Vec<gpu_compute::MeshletData> = st.scene.objects.iter()
+                .filter(|o| o.visible)
+                .map(|o| gpu_compute::MeshletData {
+                    center: o.transform.position.to_array(),
+                    radius: 1.5,
+                    ..Default::default()
+                }).collect();
+            st.frustum_culler.cull_meshlets(&meshlets);
+            let (vis, culled, _) = st.frustum_culler.stats();
+            st.gpu_visible = vis;
+            st.gpu_culled = culled;
         }
 
         // Kamera takibi (her zaman)
@@ -483,7 +643,23 @@ impl EditorApp {
     fn on_mouse_down(&mut self, x: f64, y: f64) {
         let layout = compute_layout(self.renderer.width as i32, self.renderer.height as i32);
 
-        // Buton hit-test
+        // Konsol açıkken, konsol alanı tıklamalarını yakala
+        if self.state.console.visible {
+            let console_h = 180;
+            let console_y = self.renderer.height as i32 - 26 - console_h;
+            if y >= console_y as f64 && y < (console_y + console_h) as f64 {
+                // Konsol input satırına tıklandı → odaklan
+                let input_y = console_y + console_h - 22;
+                if y >= input_y as f64 {
+                    self.state.console_input.clear();
+                    self.state.console_cursor = 0;
+                }
+                self.mouse_down = true;
+                return;
+            }
+        }
+
+        // Buton hit-test (tüm UI panelleri)
         if let Some(btn) = self.ui_layout.button_at(x, y) {
             self.handle_button(&btn);
             return;
@@ -501,7 +677,27 @@ impl EditorApp {
             layout.viewport[2], layout.viewport[3],
         );
         if x >= vx as f64 && x < (vx + vw) as f64 && y >= vy as f64 && y < (vy + vh) as f64 {
+            let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+
+            // Gizmo hit test
+            if let Some(axis) = self.state.gizmo.hit_test(
+                x, y, &self.state.scene.camera, vw as f32, vh as f32,
+            ) {
+                self.state.gizmo.start_drag(axis, x, y);
+                self.history.push(&self.state.scene);
+                self.mouse_down = true;
+                return;
+            }
+
+            // Ctrl+drag = box selection başlat
+            if ctrl {
+                self.state.selection.start_box_selection(x, y);
+                self.mouse_down = true;
+                return;
+            }
+
             self.orbiting = true;
+
             // Seçim ray'i
             let nx = ((x - vx as f64) / vw as f64) * 2.0 - 1.0;
             let ny = 1.0 - ((y - vy as f64) / vh as f64) * 2.0;
@@ -509,9 +705,19 @@ impl EditorApp {
                 screen_ray(&self.state.scene.camera, nx as f32, ny as f32, vw as f32 / vh as f32)
             {
                 if let Some(id) = self.state.scene.ray_intersect(origin, dir) {
-                    self.state.selected = Some(id);
+                    if ctrl {
+                        // Ctrl+tıkla → toggle selection
+                        self.state.selection.toggle_selection(id);
+                        self.state.selected = self.state.selection.primary_selection;
+                    } else {
+                        self.state.selection.select_single(id);
+                        self.state.selected = Some(id);
+                    }
                 } else {
-                    self.state.selected = None;
+                    if !ctrl {
+                        self.state.selection.clear_selection();
+                        self.state.selected = None;
+                    }
                 }
             }
         }
@@ -528,7 +734,7 @@ impl EditorApp {
         // Sahne değiştiren işlemlerden önce anlık görüntü al
         let snapshot_ops = [
             "add_cube", "add_sphere", "add_cylinder", "add_capsule", "del",
-            "save", "load",
+            "save", "load", "add_dynamic", "add_light", "gen_terrain", "import_obj", "import_glb", "import_texture",
         ];
         if snapshot_ops.contains(&id) {
             self.history.push(&self.state.scene);
@@ -568,18 +774,64 @@ impl EditorApp {
                 self.set_status("Kamera sıfırlandı");
             }
             "grid" => self.state.show_grid = !self.state.show_grid,
-            "save" => match self.state.scene.save_to_file("scene.json") {
-                Ok(()) => self.set_status("Sahne kaydedildi: scene.json"),
-                Err(e) => self.set_status(format!("Kaydetme hatası: {e}")),
-            },
-            "load" => match Scene::load_from_file("scene.json") {
-                Ok(scene) => {
-                    let n = scene.objects.len();
-                    self.state.scene = scene;
-                    self.state.selected = None;
-                    self.set_status(format!("Sahne yüklendi ({n} varlık)"));
+            "anim_play" => {
+                self.state.anim_playing = !self.state.anim_playing;
+                if self.state.anim_playing {
+                    self.state.blend_machine.transition_to_by_name("Idle");
+                    self.set_status("Animasyon oynatılıyor");
+                } else {
+                    self.set_status("Animasyon duraklatıldı");
                 }
-                Err(e) => self.set_status(format!("Yükleme hatası: {e}")),
+            }
+            "anim_idle" => {
+                self.state.blend_machine.transition_to_by_name("Idle");
+                self.set_status("Idle animasyonuna geçildi");
+            }
+            "anim_walk" => {
+                self.state.blend_machine.transition_to_by_name("Walk");
+                self.set_status("Walk animasyonuna geçildi");
+            }
+            "anim_run" => {
+                self.state.blend_machine.transition_to_by_name("Run");
+                self.set_status("Run animasyonuna geçildi");
+            },
+            "save" => {
+                // Her iki format'ta da kaydet
+                let json_result = crate::serialization::save_scene(&self.state.scene, "scene.json");
+                let bin_result = crate::serialization::save_scene(&self.state.scene, "scene.bin");
+                let (json_size, bin_size) = crate::serialization::compare_formats(&self.state.scene);
+                match (json_result, bin_result) {
+                    (Ok(()), Ok(())) => {
+                        self.set_status(format!("Kaydedildi: scene.json ({}, JSON) + scene.bin ({}, Binary)",
+                            format_bytes(json_size), format_bytes(bin_size)));
+                    }
+                    (Ok(()), Err(e)) => {
+                        self.set_status(format!("JSON OK, Binary hata: {} — scene.json kaydedildi", e));
+                    }
+                    (Err(e), _) => self.set_status(format!("Kaydetme hatası: {e}")),
+                }
+            }
+            "load" => {
+                // JSON'ı dene, olmazsa binary'yi dene
+                match crate::serialization::load_scene("scene.json") {
+                    Ok(scene) => {
+                        let n = scene.objects.len();
+                        self.state.scene = scene;
+                        self.state.selected = None;
+                        self.set_status(format!("Sahne yüklendi: scene.json ({n} varlık)"));
+                    }
+                    Err(_) => {
+                        match crate::serialization::load_scene("scene.bin") {
+                            Ok(scene) => {
+                                let n = scene.objects.len();
+                                self.state.scene = scene;
+                                self.state.selected = None;
+                                self.set_status(format!("Sahne yüklendi: scene.bin ({n} varlık)"));
+                            }
+                            Err(e) => self.set_status(format!("Yükleme hatası: {e}")),
+                        }
+                    }
+                }
             },
             "undo" => {
                 if self.history.undo(&mut self.state.scene) {
@@ -595,6 +847,129 @@ impl EditorApp {
                     self.set_status("Yinelenecek işlem yok");
                 }
             }
+            "add_dynamic" => {
+                let id = self.state.scene.add_object("Dynamic Sphere".into(), GeometryType::Sphere, EntityTeam::Neutral);
+                if let Some(obj) = self.state.scene.get_object_mut(id) {
+                    obj.transform.position = Vec3::new(0.0, 8.0, 0.0);
+                    obj.rigid_body = Some(crate::renderer::RigidBody {
+                        body_type: crate::renderer::RigidBodyType::Dynamic,
+                        mass: 2.0,
+                        restitution: 0.6,
+                        ..Default::default()
+                    });
+                    obj.material.metallic = 0.8;
+                    obj.material.roughness = 0.2;
+                }
+                self.state.selected = Some(id);
+                self.set_status("Dinamik küre eklendi (fizik aktif)");
+            }
+            "add_light" => {
+                let id = self.state.scene.add_object("Point Light".into(), GeometryType::Sphere, EntityTeam::Neutral);
+                if let Some(obj) = self.state.scene.get_object_mut(id) {
+                    obj.transform.position = Vec3::new(0.0, 5.0, 0.0);
+                    obj.transform.scale = Vec3::splat(0.2);
+                    obj.material.emissive = Vec3::new(1.0, 0.9, 0.7);
+                    obj.material.emissive_strength = 5.0;
+                    obj.is_light = true;
+                    let light_pos = obj.transform.position;
+                    self.state.scene.lights.push(crate::renderer::SceneLight::point(
+                        light_pos, Vec3::new(1.0, 0.9, 0.7), 3.0, 15.0,
+                    ));
+                }
+                self.state.selected = Some(id);
+                self.set_status("Nokta ışığı eklendi");
+            }
+            "gen_terrain" => {
+                let (verts, tris) = crate::renderer::Scene::generate_terrain_mesh(40.0, 32, 3.0, 42);
+                // Terrain'i ground objesine uygula
+                if let Some(ground) = self.state.scene.objects.iter_mut().find(|o| o.name == "Ground") {
+                    ground.name = "Terrain".into();
+                }
+                self.set_status(format!("Terrain üretildi: {} vertex, {} üçgen", verts.len(), tris.len()));
+            }
+            "toggle_physics" => {
+                self.state.scene.physics_enabled = !self.state.scene.physics_enabled;
+                let s = if self.state.scene.physics_enabled { "AÇIK" } else { "KAPALI" };
+                self.set_status(format!("Fizik: {}", s));
+            }
+            "toggle_console" => {
+                self.state.console.toggle();
+            }
+            "console_close" => {
+                self.state.console.visible = false;
+            }
+            "import_obj" => {
+                // Demo: baseline bir OBJ verisi oluştur ve import et
+                let demo_obj = r#"# Demo OBJ cube
+o DemoCube
+v -0.5 -0.5 0.5
+v 0.5 -0.5 0.5
+v 0.5 0.5 0.5
+v -0.5 0.5 0.5
+v -0.5 -0.5 -0.5
+v 0.5 -0.5 -0.5
+v 0.5 0.5 -0.5
+v -0.5 0.5 -0.5
+f 1 2 3 4
+f 5 8 7 6
+f 1 5 6 2
+f 2 6 7 3
+f 3 7 8 4
+f 4 8 5 1
+"#;
+                match self.state.scene.import_obj(demo_obj) {
+                    Ok(mesh_id) => {
+                        let name = format!("Imported OBJ {}", mesh_id);
+                        let id = self.state.scene.add_custom_object(
+                            name, mesh_id, crate::renderer::EntityTeam::Neutral,
+                        );
+                        self.state.selected = Some(id);
+                        self.set_status(format!("OBJ import edildi (mesh_id={})", mesh_id));
+                    }
+                    Err(e) => self.set_status(format!("Import hatası: {}", e)),
+                }
+            }
+            "import_glb" => {
+                // Demo: basit bir GLB cube oluştur ve import et
+                match create_demo_glb() {
+                    Ok(glb_data) => {
+                        match self.state.scene.import_glb(&glb_data) {
+                            Ok(mesh_id) => {
+                                let name = format!("Imported GLB {}", mesh_id);
+                                let id = self.state.scene.add_custom_object(
+                                    name, mesh_id, crate::renderer::EntityTeam::Neutral,
+                                );
+                                self.state.selected = Some(id);
+                                self.set_status(format!("GLB import edildi (mesh_id={})", mesh_id));
+                            }
+                            Err(e) => self.set_status(format!("GLB import hatası: {}", e)),
+                        }
+                    }
+                    Err(e) => self.set_status(format!("GLB oluşturma hatası: {}", e)),
+                }
+            }
+            "import_texture" => {
+                // Demo: procedural texture oluştur ve ata
+                let tex = crate::texture::Texture::checkerboard(
+                    "demo_checker", 32, 8,
+                    [200, 180, 140], [80, 60, 40],
+                );
+                let tex_id = self.state.scene.next_texture_id;
+                self.state.scene.next_texture_id += 1;
+                self.state.scene.texture_names.insert(tex_id, "demo_checker".into());
+                self.state.scene.textures.insert(tex_id, tex);
+
+                // Seçili nesneye ata
+                if let Some(obj_id) = self.state.selected {
+                    if let Ok(()) = self.state.scene.assign_texture_to_object(obj_id, tex_id, "albedo") {
+                        self.set_status(format!("Texture atandı (tex_id={})", tex_id));
+                    } else {
+                        self.set_status(format!("Texture oluşturuldu (id={}), nesne seçili değil", tex_id));
+                    }
+                } else {
+                    self.set_status(format!("Texture oluşturuldu (id={}), nesne seçili değil", tex_id));
+                }
+            }
             other => {
                 if let Some(ent_id) = other.strip_prefix("ent_").and_then(|s| s.parse::<usize>().ok()) {
                     self.state.selected = Some(ent_id);
@@ -608,8 +983,34 @@ impl EditorApp {
         let dy = self.last_mouse.map(|(_, ly)| y - ly).unwrap_or(0.0);
         self.last_mouse = Some((x, y));
 
-        // Inspector drag-edit
         if self.mouse_down {
+            // Gizmo sürükleme
+            if self.state.gizmo.is_dragging {
+                if let Some(delta) = self.state.gizmo.drag_delta(x, y) {
+                    let layout = compute_layout(self.renderer.width as i32, self.renderer.height as i32);
+                    let vw = layout.viewport[2] as f32;
+                    let vh = layout.viewport[3] as f32;
+                    let (dpos, drot, dscl) = self.state.gizmo.screen_delta_to_transform(
+                        delta.0, delta.1, &self.state.scene.camera, vw, vh,
+                    );
+                    // Seçili tüm nesnelere uygula
+                    selection_gizmo::apply_multi_transform(
+                        &mut self.state.scene,
+                        &self.state.selection.selected_ids,
+                        dpos, drot, dscl,
+                    );
+                    self.state.gizmo.drag_start = Some((x, y));
+                }
+                return;
+            }
+
+            // Box selection güncelle
+            if self.state.selection.box_selection.is_some() {
+                self.state.selection.update_box_selection(x, y);
+                return;
+            }
+
+            // Inspector drag-edit
             if let Some(drag) = self.state.active_drag {
                 let sens = match drag.comp {
                     EditComp::Rotation => 0.5,
@@ -635,6 +1036,23 @@ impl EditorApp {
     }
 
     fn on_mouse_up(&mut self) {
+        // Box selection bitir
+        if self.state.selection.box_selection.is_some() {
+            let layout = compute_layout(self.renderer.width as i32, self.renderer.height as i32);
+            let vw = layout.viewport[2] as f32;
+            let vh = layout.viewport[3] as f32;
+            let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+            self.state.selection.finish_box_selection(
+                &self.state.scene, &self.state.scene.camera.clone(), vw, vh, ctrl,
+            );
+            self.state.selected = self.state.selection.primary_selection;
+        }
+
+        // Gizmo drag bitir
+        if self.state.gizmo.is_dragging {
+            self.state.gizmo.end_drag();
+        }
+
         self.mouse_down = false;
         self.orbiting = false;
         self.state.active_drag = None;
@@ -645,12 +1063,107 @@ impl EditorApp {
     }
 
     fn on_key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
+        // Konsolvisible ise, tuşları konsola yönlendir
+        if self.state.console.visible && pressed {
+            match code {
+                KeyCode::Enter => {
+                    let input = self.state.console_input.clone();
+                    self.state.console.execute(&input);
+                    self.state.console_input.clear();
+                    self.state.console_cursor = 0;
+                    return;
+                }
+                KeyCode::Backspace => {
+                    if self.state.console_cursor > 0 {
+                        self.state.console_cursor -= 1;
+                        self.state.console_input.remove(self.state.console_cursor);
+                    }
+                    return;
+                }
+                KeyCode::ArrowUp => {
+                    if let Some(cmd) = self.state.console.history_up() {
+                        self.state.console_input = cmd;
+                        self.state.console_cursor = self.state.console_input.len();
+                    }
+                    return;
+                }
+                KeyCode::ArrowDown => {
+                    if let Some(cmd) = self.state.console.history_down() {
+                        self.state.console_input = cmd;
+                        self.state.console_cursor = self.state.console_input.len();
+                    }
+                    return;
+                }
+                KeyCode::Escape => {
+                    self.state.console.visible = false;
+                    return;
+                }
+                KeyCode::Tab => {
+                    let partial = self.state.console_input.clone();
+                    let completions = self.state.console.autocomplete(&partial);
+                    if completions.len() == 1 {
+                        self.state.console_input = completions[0].clone();
+                        self.state.console_cursor = self.state.console_input.len();
+                    } else if completions.len() > 1 {
+                        self.state.console.push_line(
+                            console::ConsoleLine::Info(completions.join("  "))
+                        );
+                    }
+                    return;
+                }
+                _ => { return; } // Konsol açıkken diğer tüm tuşları yut
+            }
+        }
+
         match code {
             KeyCode::Space if pressed => self.state.playing = !self.state.playing,
+            KeyCode::Backquote if pressed => { self.state.console.visible = !self.state.console.visible; }
             KeyCode::KeyR if pressed => self.state.scene.camera = Camera::new(),
             KeyCode::Delete if pressed => {
-                if let Some(id) = self.state.selected.take() {
-                    self.state.scene.objects.retain(|o| o.id != id);
+                // Çoklu silme desteği
+                let ids: Vec<usize> = self.state.selection.selected_ids.clone();
+                if !ids.is_empty() {
+                    selection_gizmo::delete_selected(&mut self.state.scene, &ids);
+                    self.state.selection.clear_selection();
+                    self.state.selected = None;
+                    self.set_status(format!("{} nesne silindi", ids.len()));
+                }
+            }
+            // Gizmo modu kısayolları
+            KeyCode::KeyG if pressed && !self.keys.contains(&KeyCode::ControlLeft) => {
+                self.state.gizmo.mode = selection_gizmo::GizmoMode::Translate;
+                self.set_status("Gizmo: Move (G)");
+            }
+            KeyCode::KeyR if pressed && !self.keys.contains(&KeyCode::ControlLeft) => {
+                // Ctrl+R kamera reset, R gizmo rotate
+                if self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight) {
+                    self.state.scene.camera = Camera::new();
+                } else {
+                    self.state.gizmo.mode = selection_gizmo::GizmoMode::Rotate;
+                    self.set_status("Gizmo: Rotate (R)");
+                }
+            }
+            KeyCode::KeyS if pressed && !self.keys.contains(&KeyCode::ControlLeft) => {
+                self.state.gizmo.mode = selection_gizmo::GizmoMode::Scale;
+                self.set_status("Gizmo: Scale (S)");
+            }
+            // Seçili nesneye odaklan
+            KeyCode::KeyF if pressed => {
+                if let Some(id) = self.state.selected {
+                    let focus_info = self.state.scene.get_object(id)
+                        .map(|o| (o.transform.position, o.name.clone()));
+                    if let Some((pos, name)) = focus_info {
+                        self.state.scene.camera.target = pos;
+                        self.set_status(format!("Odaklandı: {}", name));
+                    }
+                }
+            }
+            // Tümünü seç (Ctrl+A)
+            KeyCode::KeyA if pressed => {
+                if self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight) {
+                    self.state.selection.select_all(&self.state.scene);
+                    self.state.selected = self.state.selection.primary_selection;
+                    self.set_status(format!("{} nesne seçildi", self.state.selection.selection_count()));
                 }
             }
             KeyCode::Escape if pressed => event_loop.exit(),
@@ -674,6 +1187,14 @@ impl EditorApp {
             self.keys.remove(&code);
         }
     }
+
+    /// Konsol klavye girdisini işle (winit window_event'ten çağrılır)
+    fn on_char_input(&mut self, ch: char) {
+        if self.state.console.visible && !ch.is_control() {
+            self.state.console_input.insert(self.state.console_cursor, ch);
+            self.state.console_cursor += 1;
+        }
+    }
 }
 
 // yardımcı: Ground scale ayarı için küçük extension
@@ -688,6 +1209,219 @@ impl ThenSetScale for usize {
         }
         self
     }
+}
+
+/// Zengin demo sahne oluştur — başlatıldığında tüm motor özelliklerini sergiler
+fn create_demo_scene() -> Scene {
+    use std::f32::consts::PI;
+    let mut scene = Scene::new();
+
+    // ── Oyuncu (mavi kapsül)
+    let player = scene.add_object("Player".into(), GeometryType::Capsule, EntityTeam::Player);
+    if let Some(obj) = scene.get_object_mut(player) {
+        obj.transform.position = Vec3::new(0.0, 1.5, 0.0);
+        obj.material.metallic = 0.3;
+        obj.material.roughness = 0.4;
+    }
+
+    // ── Düşmanlar (kırmızı küpler, farklı boyut ve pozisyonlarda)
+    for i in 0..5 {
+        let e = scene.add_object(format!("Enemy {}", i + 1), GeometryType::Cube, EntityTeam::Enemy);
+        let angle = i as f32 * (2.0 * PI / 5.0);
+        let radius = 7.0 + i as f32 * 1.5;
+        if let Some(obj) = scene.get_object_mut(e) {
+            obj.transform.position = Vec3::new(angle.cos() * radius, 1.0, angle.sin() * radius);
+            obj.transform.scale = Vec3::splat(0.8 + i as f32 * 0.3);
+            obj.health = 50.0 + i as f32 * 50.0;
+            obj.max_health = 50.0 + i as f32 * 50.0;
+            obj.rigid_body = Some(crate::renderer::RigidBody {
+                body_type: crate::renderer::RigidBodyType::Dynamic,
+                mass: 1.0 + i as f32,
+                restitution: 0.3 + i as f32 * 0.1,
+                ..Default::default()
+            });
+        }
+    }
+
+    // ── Objeler — geometri vitrini
+    // Sol tarafta silindirler
+    for i in 0..3 {
+        let c = scene.add_object(format!("Pillar {}", i + 1), GeometryType::Cylinder, EntityTeam::Neutral);
+        if let Some(obj) = scene.get_object_mut(c) {
+            obj.transform.position = Vec3::new(-5.0, 1.5, -3.0 + i as f32 * 3.0);
+            obj.transform.scale = Vec3::new(0.4, 2.0, 0.4);
+            obj.material.metallic = 0.9;
+            obj.material.roughness = 0.1;
+            obj.material.emissive = Vec3::new(0.1, 0.3, 0.8);
+            obj.material.emissive_strength = 0.5;
+        }
+    }
+
+    // Sağ tarafta kapsüller
+    for i in 0..3 {
+        let c = scene.add_object(format!("Pod {}", i + 1), GeometryType::Capsule, EntityTeam::Neutral);
+        if let Some(obj) = scene.get_object_mut(c) {
+            obj.transform.position = Vec3::new(5.0, 1.0, -3.0 + i as f32 * 3.0);
+            obj.transform.scale = Vec3::new(0.5, 1.0, 0.5);
+            obj.material.albedo = Vec3::new(0.2, 0.8, 0.3);
+            obj.material.metallic = 0.0;
+            obj.material.roughness = 0.8;
+        }
+    }
+
+    // Ortada büyük küre (metal)
+    let sphere = scene.add_object("Orb".into(), GeometryType::Sphere, EntityTeam::Neutral);
+    if let Some(obj) = scene.get_object_mut(sphere) {
+        obj.transform.position = Vec3::new(0.0, 3.0, -5.0);
+        obj.transform.scale = Vec3::splat(1.5);
+        obj.material.metallic = 1.0;
+        obj.material.roughness = 0.05;
+        obj.material.albedo = Vec3::new(0.95, 0.85, 0.4);
+    }
+
+    // ── Işıklar
+    // Ana güneş
+    scene.lights.push(crate::renderer::SceneLight::directional(
+        Vec3::new(0.4, 0.8, 0.3).normalize(),
+        Vec3::new(1.0, 0.95, 0.85),
+        1.8,
+    ));
+    // Dolgu ışığı
+    scene.lights.push(crate::renderer::SceneLight::directional(
+        Vec3::new(-0.3, 0.5, -0.6).normalize(),
+        Vec3::new(0.3, 0.4, 0.6),
+        0.5,
+    ));
+    // Nokta ışığı — orb yakınında sıcak ışık
+    scene.lights.push(crate::renderer::SceneLight::point(
+        Vec3::new(0.0, 5.0, -5.0),
+        Vec3::new(1.0, 0.8, 0.4),
+        4.0, 20.0,
+    ));
+    // Mavi dekoratif ışık
+    scene.lights.push(crate::renderer::SceneLight::point(
+        Vec3::new(-5.0, 3.0, 0.0),
+        Vec3::new(0.2, 0.4, 1.0),
+        3.0, 15.0,
+    ));
+    // Yeşil dekoratif ışık
+    scene.lights.push(crate::renderer::SceneLight::point(
+        Vec3::new(5.0, 3.0, 0.0),
+        Vec3::new(0.2, 1.0, 0.4),
+        3.0, 15.0,
+    ));
+
+    // ── Zemin
+    scene.add_object("Ground".into(), GeometryType::Plane, EntityTeam::Neutral)
+        .then_set_scale(&mut scene);
+
+    // ── Texture'lar oluştur
+    scene.create_default_textures();
+
+    // ── Skeleton — humanoid demo
+    let skel_id = scene.create_demo_skeleton();
+    // Skeleton'u Player'a ata
+    scene.assign_skeleton_to_object(player, skel_id).ok();
+    // Walk animasyonunu başlat
+    if let Some(bsm) = scene.blend_machines.get_mut(&skel_id) {
+        bsm.transition_to_by_name("Walk");
+    }
+
+    // Sahne kamera ayarı
+    scene.camera.distance = 20.0;
+    scene.camera.yaw = -30.0;
+    scene.camera.pitch = 25.0;
+    scene.camera.target = Vec3::new(0.0, 1.5, 0.0);
+
+    scene
+}
+
+/// Byte boyutunu okunabilir formata çevir
+fn format_bytes(bytes: usize) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+/// Demo GLB cube oluştur (test/demo için)
+fn create_demo_glb() -> Result<Vec<u8>, String> {
+    // Basit bir küp GLB oluştur
+    let _cube_verts: [[f32; 3]; 8] = [
+        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+        [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+    ];
+    let _cube_normals: [[f32; 3]; 6] = [
+        [0.0, 0.0, -1.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0],
+        [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+    ];
+    // 12 üçgen (36 vertex, her yüz için 4 unique)
+    let positions: Vec<f32> = vec![
+        // Front (z=-0.5)
+        -0.5, -0.5, -0.5,  0.5, -0.5, -0.5,  0.5, 0.5, -0.5, -0.5, 0.5, -0.5,
+        // Back (z=0.5)
+        0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+        // Bottom (y=-0.5)
+        -0.5, -0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5,
+        // Top (y=0.5)
+        -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5,
+        // Left (x=-0.5)
+        -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5,
+        // Right (x=0.5)
+        0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5,
+    ];
+    let normals: Vec<f32> = vec![
+        0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0,
+        0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+        0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0,
+        0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+    ];
+    let indices: Vec<u32> = vec![
+        0,1,2, 0,2,3, 4,5,6, 4,6,7,
+        8,9,10, 8,10,11, 12,13,14, 12,14,15,
+        16,17,18, 16,18,19, 20,21,22, 20,22,23,
+    ];
+
+    // GLB JSON oluştur
+    let bin_size = positions.len() * 4 + normals.len() * 4 + indices.len() * 4;
+    let pos_offset = 0;
+    let norm_offset = positions.len() * 4;
+    let idx_offset = norm_offset + normals.len() * 4;
+
+    let json = format!(r#"{{"buffers":[{{"byteLength":{bin}}}],"bufferViews":[{{"buffer":0,"byteOffset":{po},"byteLength":{pl},"target":34962}},{{"buffer":0,"byteOffset":{no},"byteLength":{nl},"target":34962}},{{"buffer":0,"byteOffset":{io},"byteLength":{il},"target":34963}}],"accessors":[{{"bufferView":0,"byteOffset":0,"componentType":5126,"count":24,"type":"VEC3","max":[0.5,0.5,0.5],"min":[-0.5,-0.5,-0.5]}},{{"bufferView":1,"byteOffset":0,"componentType":5126,"count":24,"type":"VEC3","max":[0.0,1.0,0.0],"min":[-1.0,0.0,0.0]}},{{"bufferView":2,"byteOffset":0,"componentType":5125,"count":36,"type":"SCALAR"}}],"meshes":[{{"name":"DemoGLBCube","primitives":[{{"attributes":{{"POSITION":0,"NORMAL":1}},"indices":2,"mode":4}}]}}],"materials":[{{"name":"BluePlastic","pbrMetallicRoughness":{{"baseColorFactor":[0.2,0.4,0.8,1.0],"metallicFactor":0.1,"roughnessFactor":0.4}},"emissiveFactor":[0.0,0.0,0.0]}}],"scene":0,"scenes":[{{"nodes":[]}}]}}"#,
+        bin = bin_size, po = pos_offset, pl = positions.len() * 4,
+        no = norm_offset, nl = normals.len() * 4,
+        io = idx_offset, il = indices.len() * 4
+    );
+
+    // Binary chunk oluştur
+    let mut bin_data = Vec::new();
+    for v in &positions { bin_data.extend_from_slice(&v.to_le_bytes()); }
+    for v in &normals { bin_data.extend_from_slice(&v.to_le_bytes()); }
+    for v in &indices { bin_data.extend_from_slice(&v.to_le_bytes()); }
+
+    // GLB dosyası oluştur
+    let mut data = Vec::new();
+    // Header
+    data.extend_from_slice(&0x46546C67u32.to_le_bytes()); // magic "glTF"
+    data.extend_from_slice(&2u32.to_le_bytes()); // version 2
+    let total = 12 + 8 + json.len() + 8 + bin_data.len();
+    data.extend_from_slice(&(total as u32).to_le_bytes());
+    // JSON chunk
+    data.extend_from_slice(&(json.len() as u32).to_le_bytes());
+    data.extend_from_slice(&0x4E4F534Au32.to_le_bytes()); // "JSON"
+    data.extend_from_slice(json.as_bytes());
+    // Binary chunk
+    data.extend_from_slice(&(bin_data.len() as u32).to_le_bytes());
+    data.extend_from_slice(&0x004E4942u32.to_le_bytes()); // "BIN\0"
+    data.extend_from_slice(&bin_data);
+
+    Ok(data)
 }
 
 /// Ekran koordinatından dünya ray'i üretir (picking).
@@ -740,6 +1474,16 @@ impl ApplicationHandler for EditorApp {
                 self.on_scroll(y);
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                // Konsolvisible ise ve text varsa, karakter girdisi olarak işle
+                if self.state.console.visible {
+                    if let Some(ref text) = event.text {
+                        for ch in text.chars() {
+                            if !ch.is_control() {
+                                self.on_char_input(ch);
+                            }
+                        }
+                    }
+                }
                 if let PhysicalKey::Code(code) = event.physical_key {
                     self.on_key(code, event.state == ElementState::Pressed, event_loop);
                 }

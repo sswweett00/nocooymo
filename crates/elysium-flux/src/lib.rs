@@ -7,7 +7,7 @@ pub use graph::*;
 pub use codegen::*;
 
 use std::collections::HashMap;
-use elysium_core::{World, System};
+use elysium_core::World;
 
 pub struct KineticSystem {
     pub graphs: HashMap<String, ExecutionGraph>,

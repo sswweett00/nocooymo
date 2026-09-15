@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::io::{Read, Write, Cursor};
 use serde::{Deserialize, Serialize};
-use rkyv::{Archive, Serialize as RkyvSerialize, Deserialize as RkyvDeserialize};
 use crate::{AssetType, ImportSettings};
 
 const ELY_MAGIC: &[u8; 4] = b"ELY\0";

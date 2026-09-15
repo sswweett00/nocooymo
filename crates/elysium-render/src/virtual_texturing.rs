@@ -1,4 +1,4 @@
-use elysium_core::math::{Vec2, Vec3};
+use elysium_core::math::Vec2;
 use std::collections::HashMap;
 
 /// Sanal dokuma atlası bloğu

@@ -55,7 +55,7 @@ impl Kiln {
             };
             
             // Simulate processing
-            for step in 0..=10 {
+            for _step in 0..=10 {
                 let _ = result.clone();
             }
             
@@ -113,7 +113,7 @@ impl Kiln {
     
     /// Meshlet oluşturma
     pub fn build_meshlets(vertices: Vec<[f32; 3]>, indices: Vec<u32>) -> Result<MeshletData, String> {
-        use elysium_render::{MeshletBuilder, MAX_VERTICES_PER_MESHLET, MAX_TRIANGLES_PER_MESHLET};
+        use elysium_render::MeshletBuilder;
         
         let verts: Vec<f32> = vertices.iter().flat_map(|v| v.iter()).copied().collect();
         

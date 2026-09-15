@@ -246,7 +246,7 @@ impl IrFunction {
     /// Dominator tree hesapla (basit implementasyon)
     fn compute_dominator_tree(&self) -> DominatorTree {
         let mut idom = HashMap::new();
-        let mut dom_frontier = HashMap::new();
+        let dom_frontier = HashMap::new();
         let mut dom_tree = HashMap::new();
         
         // Entry node (ilk node) tüm node'ları dominater
@@ -279,7 +279,7 @@ impl IrFunction {
         // Basit implementasyon - her branch point için phi node ekle
         let mut phi_nodes = Vec::new();
         
-        for (&node_id, node) in &self.nodes {
+        for (&_node_id, node) in &self.nodes {
             if let IrNode::Branch(branch) = node {
                 // Her branch için phi node'lar ekle
                 for &pred in &branch.then_block {

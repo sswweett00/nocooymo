@@ -1,352 +1,72 @@
-//! Draw list for UI rendering
+//! Çizim modu — UI için temel çizim primitifleri.
 
-use crate::command::{UiCommandList, UiDrawLine, UiDrawQuad, UiDrawText};
-use crate::theme::{Theme, Animations};
-use crate::{UiRect, widgets::{AnimationType, Direction}};
-use glam::Vec2;
-use std::time::Duration;
+/// Renk
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
 
+impl Color {
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
+
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 255 }
+    }
+
+    pub const WHITE: Color = Color::new(255, 255, 255, 255);
+    pub const BLACK: Color = Color::new(0, 0, 0, 255);
+    pub const RED: Color = Color::new(255, 0, 0, 255);
+    pub const GREEN: Color = Color::new(0, 255, 0, 255);
+    pub const BLUE: Color = Color::new(0, 0, 255, 255);
+    pub const TRANSPARENT: Color = Color::new(0, 0, 0, 0);
+
+    pub fn lerp(&self, other: &Color, t: f32) -> Color {
+        let t = t.clamp(0.0, 1.0);
+        Color {
+            r: (self.r as f32 + (other.r as f32 - self.r as f32) * t) as u8,
+            g: (self.g as f32 + (other.g as f32 - self.g as f32) * t) as u8,
+            b: (self.b as f32 + (other.b as f32 - self.b as f32) * t) as u8,
+            a: (self.a as f32 + (other.a as f32 - self.a as f32) * t) as u8,
+        }
+    }
+}
+
+impl From<[u8; 4]> for Color {
+    fn from(arr: [u8; 4]) -> Self {
+        Self::new(arr[0], arr[1], arr[2], arr[3])
+    }
+}
+
+impl From<Color> for [u8; 4] {
+    fn from(c: Color) -> Self {
+        [c.r, c.g, c.b, c.a]
+    }
+}
+
+/// Çizim komutu
 #[derive(Clone, Debug)]
-pub enum DrawCmd {
-    Rect {
-        rect: UiRect,
-        color: [f32; 4],
-        corner_radius: f32,
-        z: f32,
-    },
-    Text {
-        text: String,
-        pos: Vec2,
-        color: [f32; 4],
-        size: f32,
-        z: f32,
-    },
-    Line {
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        color: [f32; 4],
-        thickness: f32,
-        z: f32,
-    },
-    Quad {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        u0: f32,
-        v0: f32,
-        u1: f32,
-        v1: f32,
-        color: [f32; 4],
-        corner_radius: f32,
-        texture_id: Option<u32>,
-        z: f32,
-    },
-    Scissor {
-        rect: UiRect,
-        z: f32,
-    },
-    // Yeni animasyon komutları
-    AnimatedRect {
-        rect: UiRect,
-        start_color: [f32; 4],
-        end_color: [f32; 4],
-        corner_radius: f32,
-        z: f32,
-        duration: Duration,
-        elapsed: Duration,
-        animation_type: AnimationType,
-    },
-    // Yeni efekt komutları
-    DropShadow {
-        rect: UiRect,
-        blur: f32,
-        spread: f32,
-        color: [f32; 4],
-        z: f32,
-    },
-    GradientRect {
-        rect: UiRect,
-        start_color: [f32; 4],
-        end_color: [f32; 4],
-        direction: Direction,
-        z: f32,
-    },
+pub enum DrawCommand {
+    Rect { x: i32, y: i32, w: i32, h: i32, color: Color },
+    FilledRect { x: i32, y: i32, w: i32, h: i32, color: Color },
+    Border { x: i32, y: i32, w: i32, h: i32, color: Color, thickness: i32 },
+    Line { x0: i32, y0: i32, x1: i32, y1: i32, color: Color, thickness: i32 },
+    Circle { cx: i32, cy: i32, radius: i32, color: Color, filled: bool },
+    Text { x: i32, y: i32, text: String, color: Color, size: u16 },
+    Image { x: i32, y: i32, w: i32, h: i32, data: Vec<u8> },
+    Gradient { x: i32, y: i32, w: i32, h: i32, top_color: Color, bottom_color: Color },
+    ClipRect { x: i32, y: i32, w: i32, h: i32 },
+    PopClip,
 }
 
+/// Çizim listesi — frame başına biriken tüm komutlar
 pub struct DrawList {
-    commands: Vec<DrawCmd>,
-    current_z: f32,
-    animation_manager: AnimationManager,
-}
-
-pub struct AnimationManager {
-    animations: Vec<AnimationState>,
-}
-
-pub struct AnimationState {
-    pub id: u64,
-    pub start_time: std::time::Instant,
-    pub duration: Duration,
-    pub progress: f32,
-    pub completed: bool,
-}
-
-impl AnimationManager {
-    pub fn new() -> Self {
-        Self {
-            animations: Vec::new(),
-        }
-    }
-
-    pub fn start_animation(&mut self, duration: Duration) -> u64 {
-        let id = rand::random::<u64>(); // Basit bir ID üretici
-        
-        self.animations.push(AnimationState {
-            id,
-            start_time: std::time::Instant::now(),
-            duration,
-            progress: 0.0,
-            completed: false,
-        });
-        
-        id
-    }
-
-    pub fn update_animations(&mut self) {
-        for anim in self.animations.iter_mut() {
-            if !anim.completed {
-                let elapsed = anim.start_time.elapsed();
-                anim.progress = (elapsed.as_secs_f32() / anim.duration.as_secs_f32()).min(1.0);
-                
-                if elapsed >= anim.duration {
-                    anim.completed = true;
-                    anim.progress = 1.0;
-                }
-            }
-        }
-        
-        // Tamamlanan animasyonları temizle
-        self.animations.retain(|anim| !anim.completed || anim.progress < 1.0);
-    }
-
-    pub fn get_animation_progress(&self, id: u64) -> Option<f32> {
-        self.animations.iter()
-            .find(|anim| anim.id == id)
-            .map(|anim| anim.progress)
-    }
-}
-
-impl DrawList {
-    pub fn new() -> Self {
-        Self {
-            commands: Vec::new(),
-            current_z: 0.0,
-            animation_manager: AnimationManager::new(),
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.commands.clear();
-        self.current_z = 0.0;
-        self.animation_manager.update_animations();
-    }
-
-    pub fn len(&self) -> usize {
-        self.commands.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.commands.is_empty()
-    }
-
-    /// Set the Z value for subsequent draw commands.
-    pub fn set_z(&mut self, z: f32) {
-        self.current_z = z;
-    }
-
-    /// Add a scissor rectangle with current Z.
-    pub fn add_scissor(&mut self, rect: UiRect) {
-        self.commands.push(DrawCmd::Scissor { rect, z: self.current_z });
-    }
-
-    pub fn add_rect(&mut self, rect: UiRect, color: [f32; 4], corner_radius: f32) {
-        self.commands.push(DrawCmd::Rect {
-            rect,
-            color,
-            corner_radius,
-            z: self.current_z,
-        });
-    }
-
-    pub fn add_rect_with_theme_color(&mut self, rect: UiRect, theme_color_getter: fn(&Theme) -> gpui::Hsla, corner_radius: f32) {
-        // gpui::Hsla'dan [f32; 4]'e dönüşüm
-        // Bu sadece placeholder - gerçek implementasyon gpui ile uyumlu olacak şekilde yapılmalı
-        let color = [0.5, 0.5, 0.5, 1.0]; // placeholder
-        self.add_rect(rect, color, corner_radius);
-    }
-
-    pub fn add_text(&mut self, text: String, pos: Vec2, color: [f32; 4], size: f32) {
-        self.commands.push(DrawCmd::Text {
-            text,
-            pos,
-            color,
-            size,
-            z: self.current_z,
-        });
-    }
-
-    pub fn add_line(
-        &mut self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        color: [f32; 4],
-        thickness: f32,
-    ) {
-        self.commands.push(DrawCmd::Line {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-            thickness,
-            z: self.current_z,
-        });
-    }
-
-    pub fn add_quad(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        u0: f32,
-        v0: f32,
-        u1: f32,
-        v1: f32,
-        color: [f32; 4],
-        corner_radius: f32,
-        texture_id: Option<u32>,
-    ) {
-        self.commands.push(DrawCmd::Quad {
-            x,
-            y,
-            width,
-            height,
-            u0,
-            v0,
-            u1,
-            v1,
-            color,
-            corner_radius,
-            texture_id,
-            z: self.current_z,
-        });
-    }
-
-    pub fn add_filled_rect(&mut self, rect: UiRect, color: [f32; 4]) {
-        self.add_rect(rect, color, 0.0);
-    }
-
-    pub fn add_border_rect(&mut self, rect: UiRect, color: [f32; 4], thickness: f32) {
-        // Sol kenar
-        self.add_filled_rect(
-            UiRect::new(rect.x, rect.y, thickness, rect.height),
-            color,
-        );
-        // Sağ kenar
-        self.add_filled_rect(
-            UiRect::new(
-                rect.x + rect.width - thickness,
-                rect.y,
-                thickness,
-                rect.height,
-            ),
-            color,
-        );
-        // Üst kenar
-        self.add_filled_rect(
-            UiRect::new(rect.x, rect.y, rect.width, thickness),
-            color,
-        );
-        // Alt kenar
-        self.add_filled_rect(
-            UiRect::new(
-                rect.x,
-                rect.y + rect.height - thickness,
-                rect.width,
-                thickness,
-            ),
-            color,
-        );
-    }
-
-    // Yeni animasyonlu çizim fonksiyonları
-    pub fn add_animated_rect(
-        &mut self,
-        rect: UiRect,
-        start_color: [f32; 4],
-        end_color: [f32; 4],
-        corner_radius: f32,
-        duration: Duration,
-        animation_type: AnimationType,
-    ) {
-        self.commands.push(DrawCmd::AnimatedRect {
-            rect,
-            start_color,
-            end_color,
-            corner_radius,
-            z: self.current_z,
-            duration,
-            elapsed: Duration::from_secs(0),
-            animation_type,
-        });
-    }
-
-    pub fn add_drop_shadow(&mut self, rect: UiRect, blur: f32, spread: f32, color: [f32; 4]) {
-        self.commands.push(DrawCmd::DropShadow {
-            rect,
-            blur,
-            spread,
-            color,
-            z: self.current_z - 0.1, // Gölge daha arkada olmalı
-        });
-    }
-
-    pub fn add_gradient_rect(&mut self, rect: UiRect, start_color: [f32; 4], end_color: [f32; 4], direction: Direction) {
-        self.commands.push(DrawCmd::GradientRect {
-            rect,
-            start_color,
-            end_color,
-            direction,
-            z: self.current_z,
-        });
-    }
-
-    pub fn commands(&self) -> &[DrawCmd] {
-        &self.commands
-    }
-
-    pub fn into_commands(self) -> Vec<DrawCmd> {
-        self.commands
-    }
-
-    // Animasyon yönetimi
-    pub fn start_animation(&mut self, duration: Duration) -> u64 {
-        self.animation_manager.start_animation(duration)
-    }
-
-    pub fn update_animations(&mut self) {
-        self.animation_manager.update_animations();
-    }
-
-    pub fn get_animation_progress(&self, id: u64) -> Option<f32> {
-        self.animation_manager.get_animation_progress(id)
-    }
+    pub commands: Vec<DrawCommand>,
+    pub clip_stack: Vec<[i32; 4]>,
 }
 
 impl Default for DrawList {
@@ -355,73 +75,76 @@ impl Default for DrawList {
     }
 }
 
-// Renk yardımcı fonksiyonları
-pub fn lerp_color(start: [f32; 4], end: [f32; 4], t: f32) -> [f32; 4] {
-    [
-        start[0] + (end[0] - start[0]) * t,
-        start[1] + (end[1] - start[1]) * t,
-        start[2] + (end[2] - start[2]) * t,
-        start[3] + (end[3] - start[3]) * t,
-    ]
-}
+impl DrawList {
+    pub fn new() -> Self {
+        Self {
+            commands: Vec::new(),
+            clip_stack: Vec::new(),
+        }
+    }
 
-// Animasyon yardımcı fonksiyonları
-pub fn ease_in_out_cubic(t: f32) -> f32 {
-    if t < 0.5 {
-        4.0 * t * t * t
-    } else {
-        let f = 2.0 * t - 2.0;
-        0.5 * f * f * f + 1.0
+    pub fn clear(&mut self) {
+        self.commands.clear();
+        self.clip_stack.clear();
+    }
+
+    pub fn push_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Color) {
+        self.commands.push(DrawCommand::FilledRect { x, y, w, h, color });
+    }
+
+    pub fn push_border(&mut self, x: i32, y: i32, w: i32, h: i32, color: Color) {
+        self.commands.push(DrawCommand::Border { x, y, w, h, color, thickness: 1 });
+    }
+
+    pub fn push_text(&mut self, x: i32, y: i32, text: &str, color: Color, size: u16) {
+        self.commands.push(DrawCommand::Text { x, y, text: text.to_string(), color, size });
+    }
+
+    pub fn push_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: Color) {
+        self.commands.push(DrawCommand::Line { x0, y0, x1, y1, color, thickness: 1 });
+    }
+
+    pub fn push_circle(&mut self, cx: i32, cy: i32, radius: i32, color: Color, filled: bool) {
+        self.commands.push(DrawCommand::Circle { cx, cy, radius, color, filled });
+    }
+
+    pub fn push_gradient(&mut self, x: i32, y: i32, w: i32, h: i32, top: Color, bottom: Color) {
+        self.commands.push(DrawCommand::Gradient { x, y, w, h, top_color: top, bottom_color: bottom });
+    }
+
+    pub fn push_clip(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.clip_stack.push([x, y, w, h]);
+        self.commands.push(DrawCommand::ClipRect { x, y, w, h });
+    }
+
+    pub fn pop_clip(&mut self) {
+        self.clip_stack.pop();
+        self.commands.push(DrawCommand::PopClip);
+    }
+
+    pub fn command_count(&self) -> usize {
+        self.commands.len()
     }
 }
 
-pub fn ease_bounce(t: f32) -> f32 {
-    const N1: f32 = 7.5625;
-    const D1: f32 = 2.75;
-    
-    if t < 1.0 / D1 {
-        N1 * t * t
-    } else if t < 2.0 / D1 {
-        let t = t - 1.5 / D1;
-        N1 * t * t + 0.75
-    } else if t < 2.5 / D1 {
-        let t = t - 2.25 / D1;
-        N1 * t * t + 0.9375
-    } else {
-        let t = t - 2.625 / D1;
-        N1 * t * t + 0.984375
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// Geometrik yardımcı fonksiyonlar
-pub fn rotate_rect(rect: UiRect, center: Vec2, angle_radians: f32) -> UiRect {
-    // Basit döndürme işlemi - köşe noktalarını döndürüp yeni sınırları hesaplar
-    let cos = angle_radians.cos();
-    let sin = angle_radians.sin();
-    
-    // Köşe noktalarını merkeze göre döndür
-    let corners = [
-        Vec2::new(rect.x, rect.y),
-        Vec2::new(rect.x + rect.width, rect.y),
-        Vec2::new(rect.x, rect.y + rect.height),
-        Vec2::new(rect.x + rect.width, rect.y + rect.height),
-    ];
-    
-    let rotated_corners: Vec<Vec2> = corners.iter()
-        .map(|&corner| {
-            let translated = corner - center;
-            Vec2::new(
-                translated.x * cos - translated.y * sin,
-                translated.x * sin + translated.y * cos,
-            ) + center
-        })
-        .collect();
-    
-    // Yeni sınırları bul
-    let min_x = rotated_corners.iter().map(|v| v.x).fold(f32::INFINITY, |a, b| a.min(b));
-    let max_x = rotated_corners.iter().map(|v| v.x).fold(f32::NEG_INFINITY, |a, b| a.max(b));
-    let min_y = rotated_corners.iter().map(|v| v.y).fold(f32::INFINITY, |a, b| a.min(b));
-    let max_y = rotated_corners.iter().map(|v| v.y).fold(f32::NEG_INFINITY, |a, b| a.max(b));
-    
-    UiRect::new(min_x, min_y, max_x - min_x, max_y - min_y)
+    #[test]
+    fn test_draw_list() {
+        let mut list = DrawList::new();
+        list.push_rect(0, 0, 100, 50, Color::rgb(255, 0, 0));
+        list.push_border(0, 0, 100, 50, Color::rgb(0, 255, 0));
+        list.push_text(10, 10, "Hello", Color::WHITE, 14);
+        assert_eq!(list.command_count(), 3);
+    }
+
+    #[test]
+    fn test_color_lerp() {
+        let c1 = Color::rgb(0, 0, 0);
+        let c2 = Color::rgb(255, 255, 255);
+        let mid = c1.lerp(&c2, 0.5);
+        assert_eq!(mid.r, 127);
+    }
 }

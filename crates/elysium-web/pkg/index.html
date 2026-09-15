@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Elysium Engine — Web Demo</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-glass: rgba(15, 15, 25, 0.85);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --accent: #4fc3f7;
+            --accent-glow: rgba(79, 195, 247, 0.3);
+            --success: #66bb6a;
+            --warning: #ffa726;
+            --danger: #ef5350;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --radius: 12px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-primary);
+            overflow: hidden;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: var(--text);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* ── Canvas ── */
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        #canvas:active { cursor: grabbing; }
+
+        /* ── Loading Screen ── */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            z-index: 1000;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+        #loading-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        .loading-logo {
+            font-size: 48px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            background: linear-gradient(135deg, var(--accent), #80deea, var(--accent));
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 2s ease-in-out infinite;
+            margin-bottom: 32px;
+        }
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .loading-bar-container {
+            width: 240px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .loading-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent), #80deea);
+            border-radius: 4px;
+            animation: load 1.5s ease-out forwards;
+        }
+        @keyframes load {
+            0% { width: 0%; }
+            60% { width: 80%; }
+            100% { width: 100%; }
+        }
+        .loading-text {
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* ── Top HUD Bar ── */
+        #hud-top {
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud-badge {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: var(--shadow);
+            pointer-events: auto;
+            transition: transform 0.2s;
+        }
+        .hud-badge:hover { transform: scale(1.05); }
+        .hud-badge.fps { color: var(--accent); }
+        .hud-badge.play { color: var(--success); }
+        .hud-badge.play.paused { color: var(--warning); }
+        .hud-badge .dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 1.5s ease infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Side Info Panel ── */
+        #side-panel {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 10;
+            pointer-events: none;
+            max-width: 260px;
+        }
+        .panel-section {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius);
+            padding: 14px 18px;
+            margin-bottom: 8px;
+            box-shadow: var(--shadow);
+        }
+        .panel-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 6px;
+        }
+        .panel-value {
+            font-size: 13px;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .panel-value .dim { color: var(--text-dim); }
+        .panel-value .highlight { color: var(--accent); font-weight: 600; }
+        .panel-value .success { color: var(--success); }
+
+        /* ── Bottom Controls Bar ── */
+        #controls-bar {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 10;
+        }
+        .ctrl-btn {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ctrl-btn:hover {
+            background: rgba(79, 195, 247, 0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-1px);
+        }
+        .ctrl-btn:active { transform: translateY(0) scale(0.97); }
+        .ctrl-btn .key {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* ── Object Info (bottom-right) ── */
+        #object-info {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 10;
+            text-align: right;
+        }
+
+        /* ── Brand Watermark ── */
+        #brand {
+            position: fixed;
+            top: 14px;
+            right: 16px;
+            z-index: 10;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+        #brand span { color: var(--accent); }
+
+        /* ── Tooltip ── */
+        .tooltip {
+            position: fixed;
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 11px;
+            color: var(--text);
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 200px;
+        }
+        .tooltip.visible { opacity: 1; }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            #side-panel { top: auto; bottom: 60px; left: 8px; max-width: 200px; }
+            .panel-section { padding: 10px 12px; }
+            .panel-label { font-size: 9px; }
+            .panel-value { font-size: 11px; }
+            #controls-bar { bottom: 8px; gap: 4px; flex-wrap: wrap; justify-content: center; }
+            .ctrl-btn { padding: 6px 10px; font-size: 11px; }
+            .ctrl-btn .key { display: none; }
+            #brand { display: none; }
+            .hud-badge { padding: 4px 10px; font-size: 11px; }
+        }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loading-logo">ELYSIUM</div>
+        <div class="loading-bar-container">
+            <div class="loading-bar"></div>
+        </div>
+        <div class="loading-text">Initializing WebGL2 Engine...</div>
+    </div>
+
+    <!-- Main Canvas -->
+    <canvas id="canvas" tabindex="0"></canvas>
+
+    <!-- Brand -->
+    <div id="brand"><span>ELYSIUM</span> WEB</div>
+
+    <!-- Top HUD -->
+    <div id="hud-top">
+        <div class="hud-badge fps">
+            <div class="dot"></div>
+            <span id="fps-display">60 FPS</span>
+        </div>
+        <div class="hud-badge play" id="play-badge">
+            <div class="dot"></div>
+            <span id="play-display">▶ Playing</span>
+        </div>
+        <div class="hud-badge">
+            <span id="objects-display">0 objects</span>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div id="side-panel">
+        <div class="panel-section">
+            <div class="panel-label">Scene Info</div>
+            <div class="panel-value" id="scene-info">
+                Loading...
+            </div>
+        </div>
+        <div class="panel-section" id="selected-section" style="display:none;">
+            <div class="panel-label">Selected</div>
+            <div class="panel-value" id="selected-info"></div>
+        </div>
+    </div>
+
+    <!-- Object Info (bottom-right) -->
+    <div id="object-info">
+        <div class="panel-section" id="camera-section">
+            <div class="panel-label">Camera</div>
+            <div class="panel-value" id="camera-info">...</div>
+        </div>
+    </div>
+
+    <!-- Bottom Controls -->
+    <div id="controls-bar">
+        <div class="ctrl-btn" onclick="window._elysium && window._elysium.toggle_play()">
+            <span class="key">Space</span> Play/Pause
+        </div>
+        <div class="ctrl-btn" onclick="window._elysium && window._elysium.delete_selected()">
+            <span class="key">Del</span> Delete
+        </div>
+        <div class="ctrl-btn" onclick="showHelp()">
+            <span class="key">?</span> Controls
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { ElysiumWebApp } from './pkg/elysium_web.js';
+
+        // ── Initialize ──
+        async function run() {
+            try {
+                await init();
+                const app = new ElysiumWebApp();
+                window._elysium = app;
+
+                // Hide loading screen
+                setTimeout(() => {
+                    document.getElementById('loading-screen').classList.add('hidden');
+                }, 1800);
+
+                // Start HUD updates
+                startHudUpdater(app);
+
+                // Canvas focus for keyboard
+                const canvas = document.getElementById('canvas');
+                canvas.focus();
+                canvas.addEventListener('click', () => canvas.focus());
+
+                // Console welcome
+                console.log(
+                    '%c⚡ Elysium Engine Web %c v0.2.0',
+                    'color: #4fc3f7; font-size: 18px; font-weight: bold',
+                    'color: #888; font-size: 12px'
+                );
+                console.log('%cAPI:', 'color: #4fc3f7; font-weight: bold',
+                    'window._elysium.get_fps(), .toggle_play(), .delete_selected(), .get_scene_json()');
+            } catch (err) {
+                document.getElementById('loading-screen').innerHTML = `
+                    <div style="color: #ef5350; font-size: 18px; font-weight: 600; margin-bottom: 12px;">
+                        ⚠️ Initialization Failed
+                    </div>
+                    <div style="color: #888; font-size: 13px; max-width: 400px; text-align: center; line-height: 1.6;">
+                        ${err.message}
+                    </div>
+                    <div style="color: #666; font-size: 11px; margin-top: 16px;">
+                        Make sure WebGL2 is supported in your browser.
+                    </div>
+                `;
+                console.error('Elysium init failed:', err);
+            }
+        }
+
+        // ── HUD Updater ──
+        function startHudUpdater(app) {
+            const fpsEl = document.getElementById('fps-display');
+            const playEl = document.getElementById('play-display');
+            const playBadge = document.getElementById('play-badge');
+            const objectsEl = document.getElementById('objects-display');
+            const sceneInfo = document.getElementById('scene-info');
+            const cameraInfo = document.getElementById('camera-info');
+
+            function update() {
+                try {
+                    const fps = Math.round(app.get_fps());
+                    const playing = app.is_playing();
+                    const objs = app.get_object_count();
+
+                    fpsEl.textContent = `${fps} FPS`;
+                    playEl.textContent = playing ? '▶ Playing' : '⏸ Paused';
+                    playBadge.className = `hud-badge play ${playing ? '' : 'paused'}`;
+                    objectsEl.textContent = `${objs} objects`;
+
+                    // Parse scene JSON for detailed info
+                    const json = app.get_scene_json();
+                    if (json) {
+                        const data = JSON.parse(json);
+                        let players = 0, enemies = 0, props = 0;
+                        data.forEach(o => {
+                            if (o.team === 'Player') players++;
+                            else if (o.team === 'Enemy') enemies++;
+                            else props++;
+                        });
+                        sceneInfo.innerHTML = `
+                            <div><span class="highlight">${data.length}</span> total entities</div>
+                            <div><span class="success">●</span> ${players} player · <span style="color:#ef5350">●</span> ${enemies} enemy · ${props} props</div>
+                        `;
+                    }
+                } catch(e) { /* ignore */ }
+                requestAnimationFrame(update);
+            }
+            update();
+        }
+
+        // ── Help Modal ──
+        function showHelp() {
+            const existing = document.getElementById('help-modal');
+            if (existing) { existing.remove(); return; }
+
+            const modal = document.createElement('div');
+            modal.id = 'help-modal';
+            modal.style.cssText = `
+                position: fixed; inset: 0; z-index: 1000;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+            `;
+            modal.innerHTML = `
+                <div style="
+                    background: var(--bg-glass); border: 1px solid var(--border-glass);
+                    border-radius: 16px; padding: 32px; max-width: 400px; width: 90%;
+                    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+                ">
+                    <div style="font-size: 20px; font-weight: 700; margin-bottom: 20px; color: var(--accent);">
+                        ⌨️ Controls
+                    </div>
+                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 13px;">
+                        <b style="color: var(--accent);">WASD</b> <span>Move / Camera orbit</span>
+                        <b style="color: var(--accent);">Mouse</b> <span>Orbit / Select</span>
+                        <b style="color: var(--accent);">Scroll</b> <span>Zoom in/out</span>
+                        <b style="color: var(--accent);">Click</b> <span>Select entity</span>
+                        <b style="color: var(--accent);">Space</b> <span>Play / Pause</span>
+                        <b style="color: var(--accent);">F</b> <span>Focus on selected</span>
+                        <b style="color: var(--accent);">R</b> <span>Reset camera</span>
+                        <b style="color: var(--accent);">Del</b> <span>Delete selected</span>
+                    </div>
+                    <div style="margin-top: 24px; text-align: center;">
+                        <button onclick="this.closest('#help-modal').remove()" style="
+                            background: var(--accent); color: #000; border: none;
+                            padding: 8px 24px; border-radius: 8px; font-weight: 600;
+                            cursor: pointer; font-size: 13px;
+                        ">Got it</button>
+                    </div>
+                </div>
+            `;
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
+            document.body.appendChild(modal);
+        }
+
+        window.showHelp = showHelp;
+        run();
+    </script>
+</body>
+</html>

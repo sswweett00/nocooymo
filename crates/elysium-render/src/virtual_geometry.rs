@@ -317,7 +317,7 @@ impl HiZBuffer {
         let mut current_width = base_width;
         let mut current_height = base_height;
         
-        for level in 0..=max_level {
+        for _level in 0..=max_level {
             let pixel_count = (current_width * current_height) as usize;
             levels.push(HiZLevel {
                 depth_values: vec![1.0; pixel_count], // Start with far plane
@@ -332,7 +332,7 @@ impl HiZBuffer {
         Self { levels, max_level }
     }
 
-    pub fn update_from_depth(&mut self, depth_buffer: &[f32], width: u32, height: u32) {
+    pub fn update_from_depth(&mut self, depth_buffer: &[f32], _width: u32, _height: u32) {
         // Base level (level 0) - copy from depth buffer
         if let Some(base_level) = self.levels.get_mut(0) {
             let copy_count = (base_level.width * base_level.height) as usize;

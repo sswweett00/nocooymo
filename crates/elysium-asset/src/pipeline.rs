@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use serde::{Deserialize, Serialize};
-use crate::{AssetType, AssetMetadata, ImportSettings, CompressionType, Cooker, ElyArchive};
+use crate::{AssetType, AssetMetadata, ImportSettings, Cooker};
 
 // ─────────────────────────────────────────────────── Pipeline Job / Message
 

@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use crate::ir::{IrModule, IrFunction, IrNode, IrValue, IrType, NodeId, BinaryOp, UnaryOp};
 use elysium_core::World;
 use cranelift::prelude::*;
-use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module};
+use cranelift_jit::JITModule;
 
 #[derive(Debug, Clone)]
 pub struct CompiledFunction {
@@ -86,7 +85,7 @@ impl Compiler {
         })
     }
 
-    pub fn compile_and_execute(&self, module: &IrModule, world: &mut World) -> Result<(), CompilationError> {
+    pub fn compile_and_execute(&self, module: &IrModule, _world: &mut World) -> Result<(), CompilationError> {
         let compiled_module = self.compile_module(module)?;
         
         // Execute all functions in the module
@@ -186,14 +185,14 @@ impl CodeGenerator {
         Ok(())
     }
 
-    fn emit_load_variable(&mut self, name: &str) -> Result<(), CompilationError> {
+    fn emit_load_variable(&mut self, _name: &str) -> Result<(), CompilationError> {
         // Emit code to load a variable
         self.code.push(0x10); // OP_LOAD_VAR
         // Add variable name or index to the bytecode
         Ok(())
     }
 
-    fn emit_function_call(&mut self, func_name: &str, args: &[NodeId], func: &IrFunction) -> Result<(), CompilationError> {
+    fn emit_function_call(&mut self, _func_name: &str, args: &[NodeId], func: &IrFunction) -> Result<(), CompilationError> {
         // Emit code to call a function
         self.code.push(0x20); // OP_CALL
         // Add function name or index to the bytecode
@@ -551,19 +550,19 @@ impl<'a> CraneliftCodeGenerator<'a> {
         }
     }
 
-    fn emit_load_variable(&mut self, name: &str) -> Result<Value, CompilationError> {
+    fn emit_load_variable(&mut self, _name: &str) -> Result<Value, CompilationError> {
         // Basit implementasyon - gerçek implementasyonda variable lookup gerekir
         let var = self.builder.ins().iconst(types::I32, 0);
         Ok(var)
     }
 
-    fn emit_function_call(&mut self, call_node: &crate::ir::FunctionCallNode, func: &IrFunction) -> Result<Value, CompilationError> {
+    fn emit_function_call(&mut self, _call_node: &crate::ir::FunctionCallNode, _func: &IrFunction) -> Result<Value, CompilationError> {
         // Basit implementasyon - gerçek implementasyonda function call gerekir
         let result = self.builder.ins().iconst(types::I32, 0);
         Ok(result)
     }
 
-    fn emit_binary_operation(&mut self, binop_node: &crate::ir::BinaryOpNode, func: &IrFunction) -> Result<Value, CompilationError> {
+    fn emit_binary_operation(&mut self, binop_node: &crate::ir::BinaryOpNode, _func: &IrFunction) -> Result<Value, CompilationError> {
         let left = *self.value_map.get(&binop_node.left)
             .ok_or_else(|| CompilationError::UndefinedVariable("left".to_string()))?;
         let right = *self.value_map.get(&binop_node.right)
@@ -585,7 +584,7 @@ impl<'a> CraneliftCodeGenerator<'a> {
         Ok(result)
     }
 
-    fn emit_unary_operation(&mut self, unop_node: &crate::ir::UnaryOpNode, func: &IrFunction) -> Result<Value, CompilationError> {
+    fn emit_unary_operation(&mut self, unop_node: &crate::ir::UnaryOpNode, _func: &IrFunction) -> Result<Value, CompilationError> {
         let operand = *self.value_map.get(&unop_node.operand)
             .ok_or_else(|| CompilationError::UndefinedVariable("operand".to_string()))?;
         
@@ -624,7 +623,7 @@ impl<'a> CraneliftCodeGenerator<'a> {
         Ok(())
     }
 
-    fn emit_return(&mut self, return_node: &crate::ir::ReturnNode, func: &IrFunction) -> Result<(), CompilationError> {
+    fn emit_return(&mut self, return_node: &crate::ir::ReturnNode, _func: &IrFunction) -> Result<(), CompilationError> {
         if let Some(value_id) = return_node.value {
             let value = *self.value_map.get(&value_id)
                 .ok_or_else(|| CompilationError::UndefinedVariable("return value".to_string()))?;
@@ -635,7 +634,7 @@ impl<'a> CraneliftCodeGenerator<'a> {
         Ok(())
     }
 
-    fn emit_assignment(&mut self, assign_node: &crate::ir::AssignmentNode, func: &IrFunction) -> Result<(), CompilationError> {
+    fn emit_assignment(&mut self, assign_node: &crate::ir::AssignmentNode, _func: &IrFunction) -> Result<(), CompilationError> {
         let source = *self.value_map.get(&assign_node.source)
             .ok_or_else(|| CompilationError::UndefinedVariable("source".to_string()))?;
         

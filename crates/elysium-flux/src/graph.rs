@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use elysium_core::{World, Entity, Transform};
 
@@ -253,7 +253,7 @@ impl ExecutionGraph {
         Ok(())
     }
 
-    fn execute_event_node(&mut self, event_node: &EventNode, node_id: NodeId, world: &mut World) -> Result<(), Box<dyn std::error::Error>> {
+    fn execute_event_node(&mut self, _event_node: &EventNode, _node_id: NodeId, _world: &mut World) -> Result<(), Box<dyn std::error::Error>> {
         // Events trigger execution of connected nodes
         // For now, we just continue execution
         Ok(())
@@ -275,7 +275,7 @@ impl ExecutionGraph {
                         if let Some(pos_value) = self.get_input_value(&function_node.inputs[1], node_id, world)? {
                             if let DataValue::Entity(entity) = entity_value {
                                 if let DataValue::Vector3(pos) = pos_value {
-                                    if let Some(mut transform) = world.get_component_mut::<Transform>(entity) {
+                                    if let Some(transform) = world.get_component_mut::<Transform>(entity) {
                                         transform.translation.x = pos[0];
                                         transform.translation.y = pos[1];
                                         transform.translation.z = pos[2];
@@ -329,12 +329,12 @@ impl ExecutionGraph {
         Ok(())
     }
 
-    fn get_input_value(&self, pin: &Pin, current_node: NodeId, world: &mut World) -> Result<Option<DataValue>, Box<dyn std::error::Error>> {
+    fn get_input_value(&self, pin: &Pin, current_node: NodeId, _world: &mut World) -> Result<Option<DataValue>, Box<dyn std::error::Error>> {
         // Find incoming edges to this pin
         let incoming_edge = self.edges.values()
             .find(|edge| edge.target_node == current_node && edge.target_pin == pin.name);
         
-        if let Some(edge) = incoming_edge {
+        if let Some(_edge) = incoming_edge {
             // Find the output value from the source node
             // This is a simplified implementation - in reality, you'd need to execute the source node first
             // and store its output value somewhere
@@ -349,7 +349,7 @@ impl ExecutionGraph {
                 DataType::Vector3 => Some(DataValue::Vector3([0.0, 0.0, 0.0])),
                 DataType::Entity => Some(DataValue::Entity(Entity::from_parts(0, 0))),
                 DataType::Transform => Some(DataValue::Transform(Transform::default())),
-                DataType::Array(inner_type) => Some(DataValue::Array(Vec::new())),
+                DataType::Array(_inner_type) => Some(DataValue::Array(Vec::new())),
                 DataType::Object => None, // Objects are complex, return None
                 DataType::Custom(_) => None, // Custom types need special handling
             })
@@ -398,7 +398,7 @@ impl GraphCompiler {
         }
     }
 
-    pub fn compile(&self, graph: &ExecutionGraph) -> Result<CompiledGraph, Box<dyn std::error::Error>> {
+    pub fn compile(&self, _graph: &ExecutionGraph) -> Result<CompiledGraph, Box<dyn std::error::Error>> {
         // In a real implementation, this would convert the graph to optimized bytecode or machine code
         // For now, we'll just return a placeholder
         Ok(CompiledGraph {
