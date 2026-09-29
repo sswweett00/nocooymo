@@ -4,7 +4,7 @@
 //! calls the solver, and exposes queries (raycast, sphere overlap) plus a
 //! contact event stream for gameplay logic.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::body::{BodyHandle, RigidBody};
 use crate::broadphase::UniformGrid;
@@ -59,6 +59,7 @@ pub struct PhysicsWorld {
     broad: UniformGrid,
     prev_pairs: HashSet<(u32, u32)>,
     pub events: Vec<ContactEvent>,
+    manifold_cache: HashMap<(u32, u32), ContactManifold>,
 }
 
 impl Default for PhysicsWorld {
@@ -82,6 +83,7 @@ impl PhysicsWorld {
             broad: UniformGrid::default(),
             prev_pairs: HashSet::new(),
             events: Vec::new(),
+            manifold_cache: HashMap::new(),
         }
     }
 
@@ -110,11 +112,67 @@ impl PhysicsWorld {
         self.vehicles.last_mut().unwrap()
     }
 
+    /// Remove a body by handle. Returns the removed body if found.
+    pub fn remove_body(&mut self, handle: BodyHandle) -> Option<RigidBody> {
+        let idx = handle.0 as usize;
+        if idx < self.bodies.len() {
+            Some(self.bodies.remove(idx))
+        } else {
+            None
+        }
+    }
+
+    /// Remove a joint by index. Returns the removed joint if found.
+    pub fn remove_joint(&mut self, index: usize) -> Option<Joint> {
+        if index < self.joints.len() {
+            Some(self.joints.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Remove a fluid by index. Returns the removed fluid if found.
+    pub fn remove_fluid(&mut self, index: usize) -> Option<SPHFluid> {
+        if index < self.fluids.len() {
+            Some(self.fluids.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Remove a vehicle by index. Returns the removed vehicle if found.
+    pub fn remove_vehicle(&mut self, index: usize) -> Option<Vehicle> {
+        if index < self.vehicles.len() {
+            Some(self.vehicles.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Return the number of bodies currently in the world.
+    pub fn body_count(&self) -> usize {
+        self.bodies.len()
+    }
+
+    /// Return the number of joints currently in the world.
+    pub fn joint_count(&self) -> usize {
+        self.joints.len()
+    }
+
+    /// Return the number of fluids currently in the world.
+    pub fn fluid_count(&self) -> usize {
+        self.fluids.len()
+    }
+
+    /// Return the number of vehicles currently in the world.
+    pub fn vehicle_count(&self) -> usize {
+        self.vehicles.len()
+    }
+
     /// Advance the simulation by `dt` seconds.
     pub fn step(&mut self, dt: f32) {
         self.events.clear();
         let sub_dt = dt / self.substeps as f32;
-        let mut manifolds: Vec<ContactManifold> = Vec::new();
 
         for _ in 0..self.substeps {
             // 1) Forces + integration.
@@ -130,11 +188,18 @@ impl PhysicsWorld {
             self.broad.rebuild(&aabbs);
             let pairs = self.broad.pairs(&aabbs);
 
-            // 3) Narrow phase.
-            manifolds.clear();
+            // 3) Narrow phase, reusing warm-start cache from previous substep.
+            let mut manifolds: Vec<ContactManifold> = Vec::new();
             for (a, b) in pairs {
                 let (ia, ib) = (a as usize, b as usize);
-                if let Some(m) = narrowphase::collide(&self.bodies[ia], &self.bodies[ib], a, b) {
+                if let Some(mut m) = narrowphase::collide(&self.bodies[ia], &self.bodies[ib], a, b) {
+                    let key = (a.min(b), a.max(b));
+                    if let Some(cached) = self.manifold_cache.get(&key) {
+                        for (new_pt, cached_pt) in m.points.iter_mut().zip(cached.points.iter()) {
+                            new_pt.normal_impulse = cached_pt.normal_impulse;
+                            new_pt.tangent_impulse = cached_pt.tangent_impulse;
+                        }
+                    }
                     manifolds.push(m);
                 }
             }
@@ -150,18 +215,43 @@ impl PhysicsWorld {
             for b in self.bodies.iter_mut() {
                 b.update_sleep(sub_dt, self.sleep_threshold);
             }
+
+            // 5) Update warm-start cache for the next substep.
+            self.manifold_cache.clear();
+            for m in &manifolds {
+                if !m.points.is_empty() {
+                    let key = (m.a.min(m.b), m.a.max(m.b));
+                    self.manifold_cache.insert(key, m.clone());
+                }
+            }
         }
 
-        // 5) Continuous subsystems run once per frame.
+        // 6) Continuous subsystems run once per frame.
         for f in self.fluids.iter_mut() {
             f.update(dt, &self.fluid_bounds);
         }
-        for v in self.vehicles.iter_mut() {
-            let bounds = self.fluid_bounds;
-            v.simulate(&mut self.bodies, dt, |_x, _z| bounds.min.y);
+
+        let vehicle_ground_data: Vec<Vec<f32>> = {
+            self.vehicles.iter().map(|v| {
+                if v.body as usize >= self.bodies.len() {
+                    return vec![self.fluid_bounds.min.y; v.wheels.len()];
+                }
+                v.wheels.iter().map(|w| {
+                    let ch = &self.bodies[v.body as usize];
+                    let wheel_world = ch.pos + ch.rot * w.local_position;
+                    let ray = Ray::new(Vec3::new(wheel_world.x, 10.0, wheel_world.z), Vec3::new(0.0, -1.0, 0.0));
+                    crate::raycast::cast_world(&self.bodies, &ray, 20.0)
+                        .map(|hit| hit.point.y)
+                        .unwrap_or(self.fluid_bounds.min.y)
+                }).collect()
+            }).collect()
+        };
+
+        for (v, ground_heights) in self.vehicles.iter_mut().zip(vehicle_ground_data) {
+            v.simulate_with_heights(&mut self.bodies, dt, &ground_heights);
         }
 
-        // 6) Contact lifecycle events.
+        // 7) Contact lifecycle events.
         let mut active: HashSet<(u32, u32)> = HashSet::new();
         for m in &manifolds {
             if !m.points.is_empty() {
@@ -189,6 +279,30 @@ impl PhysicsWorld {
         for (i, b) in self.bodies.iter().enumerate() {
             if b.aabb().intersects(&q) {
                 out.push(BodyHandle(i as u32));
+            }
+        }
+        out
+    }
+
+    /// Return bodies whose AABB overlaps the query AABB.
+    pub fn query_aabb(&self, query: &Aabb) -> Vec<BodyHandle> {
+        let mut out = Vec::new();
+        for (i, b) in self.bodies.iter().enumerate() {
+            if b.aabb().intersects(query) {
+                out.push(BodyHandle(i as u32));
+            }
+        }
+        out
+    }
+
+    /// Test whether a point is inside any body's collider.
+    pub fn query_point(&self, point: Vec3) -> Vec<BodyHandle> {
+        let mut out = Vec::new();
+        for (i, b) in self.bodies.iter().enumerate() {
+            if let Some(c) = &b.collider {
+                if c.contains_point(point, b.pos, b.rot) {
+                    out.push(BodyHandle(i as u32));
+                }
             }
         }
         out
