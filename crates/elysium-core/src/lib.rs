@@ -12,8 +12,8 @@ pub mod command;
 pub mod component;
 pub mod entity;
 pub mod hierarchy;
-pub mod input;
 pub mod scheduler;
+pub mod save_game;
 pub mod serialization;
 pub mod storage;
 pub mod terrain;
@@ -32,8 +32,20 @@ pub mod ml;
 pub mod particle_systems;
 pub mod audio_system;
 pub mod animation_system;
+pub mod crash_handler;
+pub mod mod_system;
+pub mod ai_navigation;
+pub mod input_manager;
+pub mod localization;
+pub mod vr;
 
 pub use animation_system::*;
+pub use crash_handler::*;
+pub use ai_navigation::*;
+pub use input::*;
+pub use input_manager::*;
+pub use localization::*;
+pub use vr::*;
 pub use archetype::*;
 pub use audio::*;
 pub use camera::*;
@@ -42,7 +54,6 @@ pub use command::*;
 pub use component::*;
 pub use entity::*;
 pub use hierarchy::*;
-pub use input::*;
 pub use scheduler::*;
 pub use serialization::*;
 pub use storage::*;
@@ -61,6 +72,8 @@ pub use network::*;
 pub use ml::*;
 pub use particle_systems::*;
 pub use audio_system::*;
+pub use save_game::*;
+pub use mod_system::*;
 
 // Ortak olarak kullanılan yardımcı türler ve sabitler
 pub mod prelude {
@@ -96,10 +109,26 @@ pub mod prelude {
         // Girdi sistemi
         InputManager,
         InputState,
-        KeyCode,
-        KeyState,
+        InputRebindManager,
+        InputRebindManagerBuilder,
+        InputPreset,
         InputAction,
         InputBinding,
+        KeyCode,
+        KeyState,
+        BindingSource,
+        RebindResult,
+        RebindTarget,
+        MouseSettings,
+        GamepadSettings,
+        AccessibilitySettings,
+        ButtonBehavior,
+        OneHandedLayout,
+        RumbleEffect,
+        SmoothedValue,
+        ControllerType,
+        Platform,
+        PresetDescription,
         
         // Kamera sistemi
         Camera,
@@ -164,6 +193,15 @@ pub mod prelude {
         CommandSystem,
         Command,
         
+        // VR sistemi
+        VrManager,
+        VrConfig,
+        VrRuntime,
+        VrFrame,
+        VrHand,
+        VrController,
+        VrTrackingSpace,
+
         // Yapılandırma
         EngineConfig,
         ConfigManager,
@@ -187,7 +225,28 @@ pub mod prelude {
         WorldSnapshot,
         Serializable,
         SerializationFormat,
-        
+
+        // Yerelleştirme
+        LocalizationManager,
+        LocalizationConfig,
+        Locale,
+        Gender,
+        PluralCategory,
+        TranslationContext,
+        TranslationEntry,
+        TranslationDatabase,
+        StringInterpolator,
+        LocalizedTextAsset,
+        LocalizedFontInfo,
+        LocalizedAudioInfo,
+        TextToSpeechEngine,
+        TranslationExtractor,
+        MissingTranslationReporter,
+        MissingTranslationReport,
+        TranslationValidator,
+        UnicodeOptions,
+        TextDirection,
+
         // Yardımcılar
         Rng,
         Handle,
@@ -196,6 +255,15 @@ pub mod prelude {
         Aabb,
         Frustum,
         Color,
+
+        // Çökme / Hata yönetimi
+        CrashHandler,
+        CrashReport,
+        CrashUploadConfig,
+        ErrorCategory,
+        ErrorContext,
+        CrashStatistics,
+        Watchdog,
     };
 }
 

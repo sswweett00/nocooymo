@@ -17,6 +17,7 @@
 
 pub mod body;
 pub mod broadphase;
+pub mod character_controller;
 pub mod collider;
 pub mod contact;
 pub mod fluid;
@@ -31,6 +32,11 @@ pub mod world;
 // Re-export the public surface for ergonomic `use elysium_physics::*`.
 pub use body::{BodyHandle, BodyType, RigidBody, static_plane};
 pub use broadphase::UniformGrid;
+pub use character_controller::{
+    AnimationState, CharacterController, CharacterControllerConfig, CharacterInput,
+    CharacterSnapshot, CharacterState, FootIKTarget, GroundContact, MovementSpeeds,
+    PredictionBuffer, RootMotion,
+};
 pub use collider::{Collider, ColliderShape, Material};
 pub use contact::{ContactManifold, ContactPoint};
 pub use fluid::{FluidParticle, SPHFluid};

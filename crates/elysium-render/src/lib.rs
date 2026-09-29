@@ -9,6 +9,7 @@ mod post_process;
 mod pipeline;
 mod advanced_rendering;
 mod skeleton;
+mod renderer;
 
 pub use material::*;
 pub use meshlet::*;
@@ -21,3 +22,4 @@ pub use post_process::*;
 pub use pipeline::*;
 pub use advanced_rendering::*;
 pub use skeleton::*;
+pub use renderer::*;
