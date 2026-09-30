@@ -1,5 +1,6 @@
 pub mod math;
 pub mod alloc;
+pub mod memory_system;
 
 /// 16 KiB chunk sayfası — WorldAllocator ve Chunk tarafından kullanılır.
 pub const CHUNK_SIZE: usize = 16 * 1024;
@@ -28,9 +29,11 @@ pub mod data_structures;
 pub mod physics_world;
 pub mod scripting;
 pub mod network;
+pub mod networking;
 pub mod ml;
 pub mod particle_systems;
 pub mod audio_system;
+pub mod audio_engine;
 pub mod animation_system;
 pub mod crash_handler;
 pub mod mod_system;
@@ -38,8 +41,16 @@ pub mod ai_navigation;
 pub mod input_manager;
 pub mod localization;
 pub mod vr;
+pub mod cinematics;
+pub mod build_system;
+pub mod job_system;
+pub mod accessibility;
+pub mod test_framework;
+pub mod analytics;
+pub mod cloud_services;
 
 pub use animation_system::*;
+pub use cinematics::*;
 pub use crash_handler::*;
 pub use ai_navigation::*;
 pub use input::*;
@@ -69,11 +80,20 @@ pub use data_structures::*;
 pub use physics_world::*;
 pub use scripting::*;
 pub use network::*;
+pub use networking::*;
 pub use ml::*;
 pub use particle_systems::*;
 pub use audio_system::*;
+pub use audio_engine::*;
 pub use save_game::*;
 pub use mod_system::*;
+pub use build_system::*;
+pub use memory_system::*;
+pub use job_system::*;
+pub use test_framework::*;
+pub use analytics::*;
+pub use accessibility::*;
+pub use cloud_services::*;
 
 // Ortak olarak kullanılan yardımcı türler ve sabitler
 pub mod prelude {
@@ -152,6 +172,18 @@ pub mod prelude {
         AudioManager,
         AudioClip,
         MusicPlayer,
+        AudioEngine,
+        AudioSystem,
+        AudioListenerComponent,
+        AudioReverbZone,
+        AudioEffectNode,
+        EffectChain,
+        MixerBus,
+        MusicEngine,
+        SpatialVoice,
+        SpatialSettings,
+        DistanceModel,
+        VoiceHandle,
         
         // Animasyon sistemi
         AnimationPlayer,
@@ -159,6 +191,27 @@ pub mod prelude {
         AnimationBlender,
         Skeleton,
         Bone,
+        Animator,
+        IKGoal,
+        AnimationSystem,
+        AnimationState,
+        AnimationChannel,
+        Keyframe,
+        InterpolationType,
+        LoopMode,
+        MorphTarget,
+        RootMotion,
+        BlendTree,
+        TwoBoneIK,
+        FabrikIK,
+        CCDIK,
+        LookAtIK,
+        LimbIK,
+        FullBodyIK,
+        SkeletonRetargeting,
+        BoneMapping,
+        AnimationParameterValue,
+        TransitionCondition,
         
         // Partikül sistemi
         ParticleSystem,
@@ -180,6 +233,53 @@ pub mod prelude {
         NetworkServer,
         NetworkClient,
         NetworkMessage,
+
+        // Multiplayer / networking
+        NetClient,
+        NetServer,
+        NetMessage,
+        NetEvent,
+        NetError,
+        ClientId,
+        ObjectId,
+        SequenceNumber,
+        RpcId,
+        NetworkChannel,
+        NetworkRole,
+        NetRole,
+        ConnectionState,
+        EncryptionKey,
+        Packet,
+        PacketHeader,
+        PacketFlags,
+        ServerConfig,
+        ClientConfig,
+        NetServerConfig,
+        NetClientConfig,
+        ClientConnection,
+        ConnectionManager,
+        BanList,
+        RateLimiter,
+        AntiCheatConfig,
+        NetInput,
+        ClientPredictionBuffer,
+        LagCompensationBuffer,
+        RpcRegistry,
+        ReplicatedState,
+        ReplicationPriority,
+        ReplicationFlags,
+        ReplicationSystem,
+        NetworkReplicationSystem,
+        RelevanceSystem,
+        Lobby,
+        LobbyState,
+        LobbySummary,
+        RoomConfig,
+        NatSession,
+        Networked,
+        NetworkTransform,
+        NetworkState,
+        PacketValidator,
         
         // ML sistemi
         MlAgent,
@@ -215,6 +315,33 @@ pub mod prelude {
         ProfileScope,
         FrameStats,
         MemoryStats,
+
+        // Bellek yönetimi sistemi
+        MemoryManager,
+        MemoryProfiler,
+        MemorySnapshot,
+        MemoryDebugger,
+        AllocationRecord,
+        AllocationStats,
+        GlobalAllocationTracker,
+        GarbageCollector,
+        GcObject,
+        GcVisitor,
+        GcStats,
+        TracingGc,
+        MarkAndSweepGc,
+        GenerationalGc,
+        IncrementalGc,
+        PoolAllocator,
+        LinearAllocator,
+        StackAllocator,
+        BuddyAllocator,
+        SlabAllocator,
+        RegionAllocator,
+        DebugAllocator,
+        ComponentAllocator,
+        ArchetypeAllocator,
+        ChunkAllocator,
         
         // Olay / Döngü
         GameLoop,
@@ -247,6 +374,48 @@ pub mod prelude {
         UnicodeOptions,
         TextDirection,
 
+        // Accessibility sistemi
+        AccessibilitySettings,
+        AccessibilityProfile,
+        AccessibilityManager,
+        ColorblindSettings,
+        ColorblindType,
+        ContrastMode,
+        ColorblindCorrectionMode,
+        ColorblindPalette,
+        ColorblindSimulationFilter,
+        SubtitleSettings,
+        SubtitleTrack,
+        SubtitleEntry,
+        SubtitleStyle,
+        CaptionStyle,
+        SubtitlePosition,
+        SubtitleLanguage,
+        SubtitleSize,
+        ScreenReaderSettings,
+        ScreenReaderEvent,
+        TextToSpeechSettings,
+        TextToSpeechVoice,
+        AriaAttributes,
+        AriaRole,
+        LiveRegionMode,
+        InputAccessibilitySettings,
+        InputRemapProfile,
+        InputRemapEntry,
+        VisualAccessibilitySettings,
+        TextScalingMode,
+        UIScalingMode,
+        ReducedMotionLevel,
+        HighContrastColorScheme,
+        AudioAccessibilitySettings,
+        AudioChannelMode,
+        AudioDuckingSettings,
+        VisualAudioIndicator,
+        FrequencyRange,
+        SpeechVerbosity,
+        PunctuationLevel,
+        AnnouncementPriority,
+
         // Yardımcılar
         Rng,
         Handle,
@@ -256,6 +425,32 @@ pub mod prelude {
         Frustum,
         Color,
 
+        // Sinema sistemi
+        Cutscene,
+        CutsceneEffects,
+        CinematicManager,
+        CinematicEvent,
+        CinematicEventType,
+        CinematicParticipant,
+        CinematicSystemResource,
+        CutsceneSaveState,
+        Timeline,
+        TimelinePlayback,
+        Track,
+        TrackKind,
+        Keyframe,
+        KeyframeValue,
+        KeyframeInterpolation,
+        Director,
+        Shot,
+        FramingComposition,
+        CameraSpline,
+        SplineType,
+        CameraShake,
+        ShakeType,
+        CameraTransition,
+        CameraTransitionMode,
+
         // Çökme / Hata yönetimi
         CrashHandler,
         CrashReport,
@@ -264,6 +459,19 @@ pub mod prelude {
         ErrorContext,
         CrashStatistics,
         Watchdog,
+
+        // Job sistemi
+        JobId,
+        JobPriority,
+        JobHandle,
+        JobSystem,
+        TaskGraph,
+        TaskNode,
+        SyncPoint,
+        ParallelSystem,
+        ParallelSystemAdapter,
+        Access,
+        ParallelIterator,
     };
 }
 

@@ -31,6 +31,7 @@ wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
 fontdue.workspace = true
+num_cpus.workspace = true
 glam = { version = "0.28", features = ["serde"] }
 image.workspace = true
 rand.workspace = true

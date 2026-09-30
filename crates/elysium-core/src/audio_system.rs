@@ -6,7 +6,7 @@ use crate::audio::{AudioClip, AudioListener, AudioSource, PlayState};
 use crate::math::Vec3;
 
 /// The audio system manages all audio sources and the listener.
-pub struct AudioSystem {
+pub struct AudioWorld {
     pub listener: AudioListener,
     sources: HashMap<u64, AudioSource>,
     next_id: u64,
@@ -18,7 +18,7 @@ pub struct AudioSystem {
     pub max_sources: usize,
 }
 
-impl AudioSystem {
+impl AudioWorld {
     pub fn new() -> Self {
         Self {
             listener: AudioListener::default(),
@@ -145,7 +145,7 @@ impl AudioSystem {
     }
 }
 
-impl Default for AudioSystem {
+impl Default for AudioWorld {
     fn default() -> Self {
         Self::new()
     }
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn add_remove_source() {
-        let mut sys = AudioSystem::new();
+        let mut sys = AudioWorld::new();
         let data = Arc::new(crate::audio::AudioData::new(vec![0.0; 100], 44100, 1));
         let clip = AudioClip::new("test".to_string(), data);
         let mut source = AudioSource::new();

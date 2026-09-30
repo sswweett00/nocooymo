@@ -23,6 +23,7 @@ use crate::renderer::SoftwareRenderer;
 use crate::editor_ui::UiFont;
 use crate::editor_ui::UiButton;
 use crate::editor_ui::UiLayout;
+use num_cpus;
 
 // ═══════════════════════════════════════════════════════════ 1. SES MİKSERİ PANELİ
 
@@ -509,6 +510,338 @@ impl ProfilerPanel {
     }
 }
 
+// ═══════════════════════════════════════════════════════════ 11. AĞ PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct NetworkingPanel {
+    pub connected: bool,
+    pub client_count: usize,
+    pub ping_ms: f32,
+    pub packets_sent: u64,
+    pub packets_received: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub server_ip: String,
+    pub server_port: u16,
+    pub encryption_enabled: bool,
+    pub compression_enabled: bool,
+    pub client_list: Vec<String>,
+}
+
+impl NetworkingPanel {
+    pub fn new() -> Self {
+        Self {
+            connected: false,
+            client_count: 0,
+            ping_ms: 0.0,
+            packets_sent: 0,
+            packets_received: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+            server_ip: "127.0.0.1".into(),
+            server_port: 7777,
+            encryption_enabled: true,
+            compression_enabled: true,
+            client_list: vec![],
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 12. SCRIPT PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct ScriptingPanel {
+    pub loaded_scripts: usize,
+    pub running_scripts: usize,
+    pub error_count: usize,
+    pub languages: Vec<String>,
+    pub script_names: Vec<String>,
+    pub script_statuses: Vec<String>,
+    pub total_executions: u64,
+    pub avg_exec_time_ms: f32,
+}
+
+impl ScriptingPanel {
+    pub fn new() -> Self {
+        Self {
+            loaded_scripts: 0,
+            running_scripts: 0,
+            error_count: 0,
+            languages: vec!["Lua".into(), "JavaScript".into(), "Python".into(), "Rust".into()],
+            script_names: vec![],
+            script_statuses: vec![],
+            total_executions: 0,
+            avg_exec_time_ms: 0.0,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 13. SES MOTORU PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct AudioEnginePanel {
+    pub active_sources: usize,
+    pub dsp_load: f32,
+    pub cpu_usage: f32,
+    pub memory_used_mb: f32,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub channels: u8,
+    pub effects_enabled: bool,
+    pub reverb_enabled: bool,
+    pub occlusion_enabled: bool,
+    pub doppler_enabled: bool,
+    pub streaming_enabled: bool,
+}
+
+impl AudioEnginePanel {
+    pub fn new() -> Self {
+        Self {
+            active_sources: 0,
+            dsp_load: 0.0,
+            cpu_usage: 0.0,
+            memory_used_mb: 0.0,
+            sample_rate: 48000,
+            buffer_size: 512,
+            channels: 2,
+            effects_enabled: true,
+            reverb_enabled: true,
+            occlusion_enabled: true,
+            doppler_enabled: true,
+            streaming_enabled: true,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 14. ANİMASYON PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct AnimationPanel {
+    pub active_animators: usize,
+    pub blend_trees: usize,
+    pub state_machines: usize,
+    pub animation_clips: usize,
+    pub total_bones: usize,
+    pub root_motion_enabled: bool,
+    pub ik_enabled: bool,
+    pub retargeting_enabled: bool,
+    pub current_actions: Vec<String>,
+    pub layer_weights: Vec<f32>,
+}
+
+impl AnimationPanel {
+    pub fn new() -> Self {
+        Self {
+            active_animators: 0,
+            blend_trees: 0,
+            state_machines: 0,
+            animation_clips: 0,
+            total_bones: 0,
+            root_motion_enabled: true,
+            ik_enabled: true,
+            retargeting_enabled: false,
+            current_actions: vec![],
+            layer_weights: vec![],
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 15. VFX PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct VFXPanel {
+    pub active_effects: usize,
+    pub particle_count: usize,
+    pub gpu_memory_mb: f32,
+    pub trails_count: usize,
+    pub decals_count: usize,
+    pub lights_count: usize,
+    pub weather_enabled: bool,
+    pub post_process_enabled: bool,
+    pub max_particles: usize,
+    pub active_emitters: Vec<String>,
+}
+
+impl VFXPanel {
+    pub fn new() -> Self {
+        Self {
+            active_effects: 0,
+            particle_count: 0,
+            gpu_memory_mb: 0.0,
+            trails_count: 0,
+            decals_count: 0,
+            lights_count: 0,
+            weather_enabled: true,
+            post_process_enabled: true,
+            max_particles: 10000,
+            active_emitters: vec![],
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 16. SİNEMATİK PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct CinematicsPanel {
+    pub active_sequence: String,
+    pub sequence_duration: f32,
+    pub current_time: f32,
+    pub camera_count: usize,
+    pub cutscene_count: usize,
+    pub subtitles_enabled: bool,
+    pub letterbox_enabled: bool,
+    pub fps_target: u32,
+    pub sequences: Vec<String>,
+}
+
+impl CinematicsPanel {
+    pub fn new() -> Self {
+        Self {
+            active_sequence: String::new(),
+            sequence_duration: 0.0,
+            current_time: 0.0,
+            camera_count: 0,
+            cutscene_count: 0,
+            subtitles_enabled: true,
+            letterbox_enabled: true,
+            fps_target: 30,
+            sequences: vec![],
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 17. YAPIM PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct BuildPanel {
+    pub platform: String,
+    pub configuration: String,
+    pub build_size_mb: f32,
+    pub build_time_sec: f32,
+    pub last_build_status: String,
+    pub artifacts: Vec<String>,
+    pub incremental_build: bool,
+    pub strip_debug: bool,
+    pub compression: bool,
+    pub code_signing: bool,
+}
+
+impl BuildPanel {
+    pub fn new() -> Self {
+        Self {
+            platform: "PC".into(),
+            configuration: "Shipping".into(),
+            build_size_mb: 0.0,
+            build_time_sec: 0.0,
+            last_build_status: "Başarılı".into(),
+            artifacts: vec!["game.exe".into(), "data.pak".into()],
+            incremental_build: true,
+            strip_debug: true,
+            compression: true,
+            code_signing: false,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 18. İŞ SİSTEMİ PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct JobSystemPanel {
+    pub worker_threads: usize,
+    pub active_jobs: usize,
+    pub queued_jobs: usize,
+    pub completed_jobs: u64,
+    pub failed_jobs: u64,
+    pub avg_job_time_ms: f32,
+    pub steal_count: u64,
+    pub graph_depth: usize,
+    pub task_graphs: usize,
+    pub parallel_for_active: bool,
+}
+
+impl JobSystemPanel {
+    pub fn new() -> Self {
+        Self {
+            worker_threads: num_cpus::get(),
+            active_jobs: 0,
+            queued_jobs: 0,
+            completed_jobs: 0,
+            failed_jobs: 0,
+            avg_job_time_ms: 0.0,
+            steal_count: 0,
+            graph_depth: 0,
+            task_graphs: 0,
+            parallel_for_active: false,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 19. BELLEK PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct MemoryPanel {
+    pub total_allocated_mb: f32,
+    pub total_reserved_mb: f32,
+    pub fragmentation: f32,
+    pub pool_count: usize,
+    pub gc_runs: u64,
+    pub gc_time_ms: f32,
+    pub leaks_detected: usize,
+    pub peak_memory_mb: f32,
+    pub current_heap_mb: f32,
+    pub stack_usage_mb: f32,
+}
+
+impl MemoryPanel {
+    pub fn new() -> Self {
+        Self {
+            total_allocated_mb: 0.0,
+            total_reserved_mb: 0.0,
+            fragmentation: 0.0,
+            pool_count: 0,
+            gc_runs: 0,
+            gc_time_ms: 0.0,
+            leaks_detected: 0,
+            peak_memory_mb: 0.0,
+            current_heap_mb: 0.0,
+            stack_usage_mb: 0.0,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════ 20. ANALİTİK PANELİ
+
+#[derive(Debug, Clone, Default)]
+pub struct AnalyticsPanel {
+    pub session_id: String,
+    pub events_sent: u64,
+    pub events_failed: u64,
+    pub metrics_count: usize,
+    pub reports_generated: usize,
+    pub storage_used_mb: f32,
+    pub upload_queue: usize,
+    pub privacy_mode: bool,
+    pub crash_reports: usize,
+    pub performance_metrics: Vec<String>,
+}
+
+impl AnalyticsPanel {
+    pub fn new() -> Self {
+        Self {
+            session_id: String::new(),
+            events_sent: 0,
+            events_failed: 0,
+            metrics_count: 0,
+            reports_generated: 0,
+            storage_used_mb: 0.0,
+            upload_queue: 0,
+            privacy_mode: false,
+            crash_reports: 0,
+            performance_metrics: vec![],
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════ ANA YAPI
 
 #[derive(Clone, Default)]
@@ -523,7 +856,17 @@ pub struct EditorExtensions {
     pub ai_nav: AINavigationPanel,
     pub settings: SettingsPanel,
     pub profiler: ProfilerPanel,
-    pub panel_visible: [bool; 10],
+    pub networking: NetworkingPanel,
+    pub scripting: ScriptingPanel,
+    pub audio_engine: AudioEnginePanel,
+    pub animation: AnimationPanel,
+    pub vfx: VFXPanel,
+    pub cinematics: CinematicsPanel,
+    pub build: BuildPanel,
+    pub job_system: JobSystemPanel,
+    pub memory: MemoryPanel,
+    pub analytics: AnalyticsPanel,
+    pub panel_visible: [bool; 20],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Eq, Hash)]
@@ -539,6 +882,16 @@ pub enum PanelId {
     AINav,
     Settings,
     Profiler,
+    Networking,
+    Scripting,
+    AudioEngine,
+    Animation,
+    VFX,
+    Cinematics,
+    Build,
+    JobSystem,
+    Memory,
+    Analytics,
 }
 
 impl EditorExtensions {
@@ -554,7 +907,17 @@ impl EditorExtensions {
             ai_nav: AINavigationPanel::new(),
             settings: SettingsPanel::new(),
             profiler: ProfilerPanel::new(),
-            panel_visible: [false; 10],
+            networking: NetworkingPanel::new(),
+            scripting: ScriptingPanel::new(),
+            audio_engine: AudioEnginePanel::new(),
+            animation: AnimationPanel::new(),
+            vfx: VFXPanel::new(),
+            cinematics: CinematicsPanel::new(),
+            build: BuildPanel::new(),
+            job_system: JobSystemPanel::new(),
+            memory: MemoryPanel::new(),
+            analytics: AnalyticsPanel::new(),
+            panel_visible: [false; 20],
         }
     }
 
@@ -566,6 +929,13 @@ impl EditorExtensions {
             self.save_manager.auto_save_timer += dt;
             if self.save_manager.auto_save_timer >= self.save_manager.auto_save_interval {
                 self.save_manager.auto_save_timer = 0.0;
+            }
+        }
+
+        if self.cinematics.active_sequence.len() > 0 {
+            self.cinematics.current_time += dt;
+            if self.cinematics.current_time > self.cinematics.sequence_duration {
+                self.cinematics.current_time = 0.0;
             }
         }
     }
@@ -599,6 +969,16 @@ impl EditorExtensions {
             ("AI / Nav", PanelId::AINav, "ai_nav"),
             ("Settings", PanelId::Settings, "settings"),
             ("Profiler", PanelId::Profiler, "profiler"),
+            ("Networking", PanelId::Networking, "networking"),
+            ("Scripting", PanelId::Scripting, "scripting"),
+            ("Audio Engine", PanelId::AudioEngine, "audio_engine"),
+            ("Animation", PanelId::Animation, "animation"),
+            ("VFX", PanelId::VFX, "vfx"),
+            ("Cinematics", PanelId::Cinematics, "cinematics"),
+            ("Build", PanelId::Build, "build"),
+            ("Job System", PanelId::JobSystem, "job_system"),
+            ("Memory", PanelId::Memory, "memory"),
+            ("Analytics", PanelId::Analytics, "analytics"),
         ];
 
         for (name, id, btn_id) in panels {
@@ -643,6 +1023,16 @@ impl EditorExtensions {
             PanelId::AINav => self.draw_ai_nav_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
             PanelId::Settings => self.draw_settings_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
             PanelId::Profiler => self.draw_profiler_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Networking => self.draw_networking_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Scripting => self.draw_scripting_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::AudioEngine => self.draw_audio_engine_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Animation => self.draw_animation_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::VFX => self.draw_vfx_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Cinematics => self.draw_cinematics_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Build => self.draw_build_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::JobSystem => self.draw_job_system_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Memory => self.draw_memory_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
+            PanelId::Analytics => self.draw_analytics_panel(fb, font, bx, &mut by, bw, hover_btn, ui),
         }
     }
 
@@ -1393,6 +1783,380 @@ pub fn handle_extension_button(ext: &mut EditorExtensions, id: &str) {
         _ => {}
     }
 }
+
+// ───────────────────────────────────────────────────────── 11. AĞ PANELİ
+    fn draw_networking_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let net = &self.networking;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Connection:");
+        let conn_label = if net.connected { "Bağlı" } else { "Bağlı Değil" };
+        draw_btn(fb, font, bx + bw - 80, *by - 2, 72, 18, conn_label, if net.connected { COL_TEXT_GREEN } else { [200, 80, 80, 255] }, hover_btn, "net_connect", ui);
+        *by += 20;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Server: {}:{}", net.server_ip, net.server_port));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Clients: {} | Ping: {:.1} ms", net.client_count, net.ping_ms));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Sent: {} pkts / {} bytes", net.packets_sent, net.bytes_sent));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Received: {} pkts / {} bytes", net.packets_received, net.bytes_received));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Options:");
+        *by += 16;
+        let enc_label = if net.encryption_enabled { "ON" } else { "OFF" };
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Encryption: {}", enc_label), COL_BUTTON, hover_btn, "net_enc", ui);
+        *by += 22;
+        let comp_label = if net.compression_enabled { "ON" } else { "OFF" };
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Compression: {}", comp_label), COL_BUTTON, hover_btn, "net_comp", ui);
+        *by += 22;
+
+        if !net.client_list.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Client List:");
+            *by += 16;
+            for c in net.client_list.iter().take(8) {
+                font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, c);
+                *by += 14;
+            }
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 12. SCRIPT PANELİ
+    fn draw_scripting_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let scr = &self.scripting;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Script Engine:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Loaded: {} | Running: {}", scr.loaded_scripts, scr.running_scripts));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Executions: {} | Avg: {:.2} ms", scr.total_executions, scr.avg_exec_time_ms));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Errors: {}", scr.error_count));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Languages:");
+        *by += 16;
+        for lang in scr.languages.iter() {
+            draw_btn(fb, font, bx + 8, *by, bw - 16, 18, lang, COL_BUTTON, hover_btn, &format!("script_lang_{}", lang), ui);
+            *by += 22;
+        }
+
+        if !scr.script_names.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Scripts:");
+            *by += 16;
+            for (name, status) in scr.script_names.iter().zip(scr.script_statuses.iter()).take(6) {
+                let col = if status == "Error" { [200, 80, 80, 255] } else { COL_TEXT };
+                font.draw_text(fb, bx + 8, *by, 11, col, &format!("{} ({})", name, status));
+                *by += 14;
+            }
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 13. SES MOTORU PANELİ
+    fn draw_audio_engine_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let ae = &self.audio_engine;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Audio Engine:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Active Sources: {} | DSP Load: {:.1}%", ae.active_sources, ae.dsp_load * 100.0));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("CPU: {:.1}% | Memory: {:.1} MB", ae.cpu_usage * 100.0, ae.memory_used_mb));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("{} Hz / {} samples / {} ch", ae.sample_rate, ae.buffer_size, ae.channels));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Features:");
+        *by += 16;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Effects: {}", if ae.effects_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "ae_fx", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Reverb: {}", if ae.reverb_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "ae_reverb", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Occlusion: {}", if ae.occlusion_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "ae_occ", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Doppler: {}", if ae.doppler_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "ae_doppler", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Streaming: {}", if ae.streaming_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "ae_stream", ui);
+        *by += 22;
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 14. ANİMASYON PANELİ
+    fn draw_animation_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let anim = &self.animation;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Animation System:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Animators: {} | Clips: {}", anim.active_animators, anim.animation_clips));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Blend Trees: {} | State Machines: {}", anim.blend_trees, anim.state_machines));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Bones: {} | IK: {}", anim.total_bones, if anim.ik_enabled { "ON" } else { "OFF" }));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Actions:");
+        *by += 16;
+        for action in anim.current_actions.iter().take(6) {
+            font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, action);
+            *by += 14;
+        }
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Layers:");
+        *by += 16;
+        for (i, w) in anim.layer_weights.iter().take(5).enumerate() {
+            let pct = (w * 100.0) as i32;
+            font.draw_text(fb, bx + 8, *by, 11, COL_TEXT_DIM, &format!("Layer {}: {}%", i, pct));
+            *by += 14;
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 15. VFX PANELİ
+    fn draw_vfx_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let vfx = &self.vfx;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "VFX System:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Effects: {} | Particles: {}", vfx.active_effects, vfx.particle_count));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Trails: {} | Decals: {} | Lights: {}", vfx.trails_count, vfx.decals_count, vfx.lights_count));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("GPU Mem: {:.1} MB / Max: {}", vfx.gpu_memory_mb, vfx.max_particles));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Options:");
+        *by += 16;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Weather: {}", if vfx.weather_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "vfx_weather", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Post-Process: {}", if vfx.post_process_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "vfx_pp", ui);
+        *by += 22;
+
+        if !vfx.active_emitters.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Emitters:");
+            *by += 16;
+            for e in vfx.active_emitters.iter().take(6) {
+                font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, e);
+                *by += 14;
+            }
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 16. SİNEMATİK PANELİ
+    fn draw_cinematics_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let cin = &self.cinematics;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Cinematics:");
+        *by += 16;
+        let seq_label = if cin.active_sequence.is_empty() { "None" } else { &cin.active_sequence };
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Sequence: {} ({:.1}s / {:.1}s)", seq_label, cin.current_time, cin.sequence_duration));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Cameras: {} | Cutscenes: {}", cin.camera_count, cin.cutscene_count));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("FPS Target: {} | Subtitles: {}", cin.fps_target, if cin.subtitles_enabled { "ON" } else { "OFF" }));
+        *by += 16;
+
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Letterbox: {}", if cin.letterbox_enabled { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "cine_letter", ui);
+        *by += 22;
+
+        if !cin.sequences.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Sequences:");
+            *by += 16;
+            for s in cin.sequences.iter().take(6) {
+                font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, s);
+                *by += 14;
+            }
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 17. YAPIM PANELİ
+    fn draw_build_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let build = &self.build;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Build & Deployment:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Platform: {} | Config: {}", build.platform, build.configuration));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Size: {:.1} MB | Time: {:.1}s", build.build_size_mb, build.build_time_sec));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Status: {}", build.last_build_status));
+        *by += 16;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Options:");
+        *by += 16;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Incremental: {}", if build.incremental_build { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "build_inc", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Strip Debug: {}", if build.strip_debug { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "build_strip", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Compression: {}", if build.compression { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "build_comp", ui);
+        *by += 22;
+        draw_btn(fb, font, bx, *by, bw, 18, &format!("Code Sign: {}", if build.code_signing { "ON" } else { "OFF" }), COL_BUTTON, hover_btn, "build_sign", ui);
+        *by += 22;
+
+        if !build.artifacts.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Artifacts:");
+            *by += 16;
+            for a in build.artifacts.iter() {
+                font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, a);
+                *by += 14;
+            }
+        }
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 18. İŞ SİSTEMİ PANELİ
+    fn draw_job_system_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let job = &self.job_system;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Job System:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Workers: {} | Active: {} | Queued: {}", job.worker_threads, job.active_jobs, job.queued_jobs));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Completed: {} | Failed: {} | Avg: {:.2} ms", job.completed_jobs, job.failed_jobs, job.avg_job_time_ms));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Steals: {} | Graphs: {} | Depth: {}", job.steal_count, job.task_graphs, job.graph_depth));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Parallel.For: {}", if job.parallel_for_active { "Active" } else { "Idle" }));
+        *by += 16;
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 19. BELLEK PANELİ
+    fn draw_memory_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let mem = &self.memory;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Memory Management:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Allocated: {:.1} MB | Reserved: {:.1} MB", mem.total_allocated_mb, mem.total_reserved_mb));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Heap: {:.1} MB | Stack: {:.1} MB | Peak: {:.1} MB", mem.current_heap_mb, mem.stack_usage_mb, mem.peak_memory_mb));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Fragmentation: {:.1}% | Pools: {} | Leaks: {}", mem.fragmentation * 100.0, mem.pool_count, mem.leaks_detected));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("GC Runs: {} | GC Time: {:.2} ms", mem.gc_runs, mem.gc_time_ms));
+        *by += 16;
+        *by
+    }
+
+    // ───────────────────────────────────────────────────────── 20. ANALİTİK PANELİ
+    fn draw_analytics_panel(
+        &self,
+        fb: &mut SoftwareRenderer,
+        font: &mut UiFont,
+        bx: i32,
+        by: &mut i32,
+        bw: i32,
+        hover_btn: Option<&str>,
+        ui: &mut UiLayout,
+    ) -> i32 {
+        let ana = &self.analytics;
+
+        font.draw_text(fb, bx, *by, 12, COL_TEXT, "Analytics & Telemetry:");
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Session: {}", if ana.session_id.is_empty() { "N/A" } else { &ana.session_id }));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Events Sent: {} | Failed: {}", ana.events_sent, ana.events_failed));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Metrics: {} | Reports: {}", ana.metrics_count, ana.reports_generated));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Storage: {:.1} MB | Upload Queue: {}", ana.storage_used_mb, ana.upload_queue));
+        *by += 16;
+        font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, &format!("Crashes: {} | Privacy: {}", ana.crash_reports, if ana.privacy_mode { "ON" } else { "OFF" }));
+        *by += 16;
+
+        if !ana.performance_metrics.is_empty() {
+            font.draw_text(fb, bx, *by, 12, COL_TEXT_DIM, "Metrics:");
+            *by += 16;
+            for m in ana.performance_metrics.iter().take(5) {
+                font.draw_text(fb, bx + 8, *by, 11, COL_TEXT, m);
+                *by += 14;
+            }
+        }
+        *by
+    }
 
 pub fn toggle_panel(ext: &mut EditorExtensions, panel: PanelId) {
     let idx = panel as usize;

@@ -1206,6 +1206,17 @@ f 4 8 5 1
             KeyCode::F8 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::AINav),
             KeyCode::F9 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Settings),
             KeyCode::F10 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Profiler),
+            // Uzantı paneli kısayolları (F11-F20)
+            KeyCode::F11 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Networking),
+            KeyCode::F12 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Scripting),
+            KeyCode::F13 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::AudioEngine),
+            KeyCode::F14 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Animation),
+            KeyCode::F15 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::VFX),
+            KeyCode::F16 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Cinematics),
+            KeyCode::F17 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Build),
+            KeyCode::F18 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::JobSystem),
+            KeyCode::F19 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Memory),
+            KeyCode::F20 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Analytics),
             _ => {}
         }
         if pressed {
