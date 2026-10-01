@@ -1080,6 +1080,48 @@ impl SoftwareRenderer {
         }
     }
 
+    /// Ekran uzayında alpha-blend'li çizgi çizer (Bresenham, kalınlıklı).
+    /// Hareket izleri, minimap, debug çizimleri gibi overlay katmanı için.
+    pub fn draw_overlay_line(
+        &mut self,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        thickness: i32,
+        c: [u8; 4],
+    ) {
+        if c[3] == 0 { return; }
+        let (fw, fh) = (self.width as i32, self.height as i32);
+        let dx = (x1 - x0).abs();
+        let dy = (y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx - dy;
+        let mut x = x0;
+        let mut y = y0;
+        let half = thickness / 2;
+        loop {
+            // Kalınlık için küçük disk
+            for py in (y - half)..=(y + half) {
+                for px in (x - half)..=(x + half) {
+                    if px < 0 || py < 0 || px >= fw || py >= fh { continue; }
+                    let idx = (py as u32 * self.width + px as u32) as usize;
+                    let a = c[3] as f32 / 255.0;
+                    let inv = 1.0 - a;
+                    self.color[idx*4  ] = (c[0] as f32 * a + self.color[idx*4  ] as f32 * inv) as u8;
+                    self.color[idx*4+1] = (c[1] as f32 * a + self.color[idx*4+1] as f32 * inv) as u8;
+                    self.color[idx*4+2] = (c[2] as f32 * a + self.color[idx*4+2] as f32 * inv) as u8;
+                    self.color[idx*4+3] = 255;
+                }
+            }
+            if x == x1 && y == y1 { break; }
+            let e2 = 2 * err;
+            if e2 > -dy { err -= dy; x += sx; }
+            if e2 < dx { err += dx; y += sy; }
+        }
+    }
+
     /// Fontdue glyph bitmap'ini alpha ile blit eder.
     pub fn blit_glyph(
         &mut self,
