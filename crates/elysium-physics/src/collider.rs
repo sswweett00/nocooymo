@@ -213,6 +213,25 @@ impl Collider {
     pub fn shape_world_center(&self, body_pos: Vec3, body_rot: crate::math::Quat) -> Vec3 {
         body_pos + body_rot * self.offset
     }
+
+    /// Test whether a world-space point is inside this collider.
+    pub fn contains_point(&self, point: Vec3, body_pos: Vec3, body_rot: crate::math::Quat) -> bool {
+        let local = body_rot.inverse() * (point - body_pos - self.offset);
+        match self.shape {
+            ColliderShape::Sphere { radius } => local.norm_squared() <= radius * radius,
+            ColliderShape::Box { half_extents } => {
+                local.x.abs() <= half_extents.x
+                    && local.y.abs() <= half_extents.y
+                    && local.z.abs() <= half_extents.z
+            }
+            ColliderShape::Capsule { radius, height } => {
+                let half = height * 0.5;
+                let d = local.y.abs() - half;
+                let lateral_dist = local.xz().norm();
+                lateral_dist * lateral_dist + d.max(0.0).powi(2) <= radius * radius
+            }
+        }
+    }
 }
 
 /// Simple collision-filter test between two colliders.

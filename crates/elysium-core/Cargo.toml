@@ -28,6 +28,20 @@ bincode.workspace = true
 toml = "0.8"
 sha2 = "0.10"
 once_cell = "1.19"
+num_cpus = { workspace = true }
+zip = "2.1"
+flate2 = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+zstd = "0.13"
+lz4 = "0.26"
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+backtrace = "0.3"
+minidump-writer = { version = "0.2", optional = true }
+minidump = { version = "0.8", optional = true }
+libc = { version = "0.2", optional = true }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_Stdio", "Win32_UI_WindowsAndMessaging"], optional = true }
 
 [features]
 default = []
+crash_handler = ["minidump-writer", "minidump", "libc", "windows-sys"]

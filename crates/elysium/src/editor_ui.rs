@@ -618,6 +618,15 @@ pub fn draw_ui(
         st.gpu_particles_active, st.gpu_visible, st.gpu_visible + st.gpu_culled);
     font.draw_text(fb, win_w - 180, win_h - BOTTOM_BAR_H + 7, 13, [100, 200, 255, 255], &gpu_text);
 
+    // Uzantı panellerini çiz
+    st.extensions.draw_extensions_panels(
+        fb,
+        font,
+        layout.right_panel,
+        hover_btn,
+        &mut ui,
+    );
+
     ui
 }
 

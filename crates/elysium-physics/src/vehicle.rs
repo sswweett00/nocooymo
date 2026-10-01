@@ -66,11 +66,8 @@ impl Vehicle {
         self
     }
 
-    /// Advance the vehicle by `dt`. `ground_height(x, z)` gives the terrain.
-    pub fn simulate<F>(&mut self, bodies: &mut [RigidBody], dt: f32, ground_height: F)
-    where
-        F: Fn(f32, f32) -> f32,
-    {
+    /// Advance the vehicle by `dt` using precomputed ground heights for each wheel.
+    pub fn simulate_with_heights(&mut self, bodies: &mut [RigidBody], dt: f32, ground_heights: &[f32]) {
         if self.body as usize >= bodies.len() {
             return;
         }
@@ -84,7 +81,6 @@ impl Vehicle {
             (ch.rot * Vec3::new(1.0, 0.0, 0.0)).normalize() // +X right
         };
 
-        // Capture wheel geometry before mutably borrowing the chassis.
         let wheel_data: Vec<(Vec3, VehicleWheel)> = {
             let ch = &bodies[self.body as usize];
             self.wheels
@@ -93,8 +89,7 @@ impl Vehicle {
                 .collect()
         };
 
-        for (ws, w) in &wheel_data {
-            let ground = ground_height(ws.x, ws.z);
+        for ((ws, w), &ground) in wheel_data.iter().zip(self.wheels.iter()).zip(ground_heights.iter().copied()) {
             let len = ws.y - ground;
             let compression = w.suspension_rest - len;
             if compression <= 0.0 {

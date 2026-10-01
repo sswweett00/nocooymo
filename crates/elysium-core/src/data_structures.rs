@@ -101,7 +101,7 @@ pub fn damp(current: f32, target: f32, damping: f32, dt: f32) -> f32 {
 // ---------------------------------------------------------------------------
 
 /// Linear RGB color with alpha.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Color {
     pub r: f32,
     pub g: f32,

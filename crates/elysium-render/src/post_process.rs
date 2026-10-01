@@ -301,4 +301,111 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#
     }
+
+    /// Returns a list of enabled effect names and their WGSL shader source.
+    pub fn process_effects(&self) -> Vec<(&'static str, &'static str)> {
+        let mut out = Vec::new();
+        for effect in &self.enabled_effects {
+            match effect {
+                PostProcessEffect::Bloom => {
+                    out.push(("Bloom", Self::get_bloom_shader_wgsl()));
+                }
+                PostProcessEffect::Ssao => {
+                    out.push(("Ssao", Self::get_ssao_shader_wgsl()));
+                }
+                PostProcessEffect::MotionBlur => {
+                    out.push(("MotionBlur", Self::get_motion_blur_shader_wgsl()));
+                }
+                PostProcessEffect::Fxaa => {
+                    if self.fxaa_enabled {
+                        out.push(("Fxaa", Self::get_fxaa_shader_wgsl()));
+                    }
+                }
+                PostProcessEffect::Taa => {
+                    if self.taa_enabled {
+                        out.push(("Taa", Self::get_taa_shader_wgsl()));
+                    }
+                }
+                PostProcessEffect::ToneMapping => {
+                    if self.tone_mapping_enabled {
+                        out.push(("ToneMapping", Self::get_tonemap_shader_wgsl()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    pub fn get_motion_blur_shader_wgsl() -> &'static str {
+        r#"
+@group(0) @binding(0) var color_tex: texture_2d<f32>;
+@group(0) @binding(1) var vel_tex: texture_2d<f32>;
+@group(0) @binding(2) var tex_sampler: sampler;
+
+struct MotionBlurParams {
+    shutter_speed: f32,
+    max_velocity: f32,
+    sample_count: f32,
+}
+@group(0) @binding(3) var<uniform> params: MotionBlurParams;
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4<f32> {
+    var pos = array<vec2<f32>, 3>(
+        vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)
+    );
+    return vec4(pos[idx], 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let dims = textureDimensions(color_tex);
+    let uv = pos.xy / vec2<f32>(f32(dims.x), f32(dims.y));
+    let vel = textureSample(vel_tex, tex_sampler, uv).xy;
+    let speed = length(vel) / params.max_velocity;
+    let samples = u32(params.sample_count);
+    var color = vec4<f32>(0.0);
+    for (var i: u32; i < samples; i = i + 1u) {
+        let t = (f32(i) + 0.5) / f32(samples);
+        let offset = vel * params.shutter_speed * (t - 0.5);
+        color = color + textureSample(color_tex, tex_sampler, uv - offset);
+    }
+    return color / f32(samples);
+}
+"#
+    }
+
+    pub fn get_taa_shader_wgsl() -> &'static str {
+        r#"
+@group(0) @binding(0) var current_tex: texture_2d<f32>;
+@group(0) @binding(1) var history_tex: texture_2d<f32>;
+@group(0) @binding(2) var tex_sampler: sampler;
+
+struct TaaParams {
+    blend_factor: f32,
+    sharpen: f32,
+}
+@group(0) @binding(3) var<uniform> params: TaaParams;
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4<f32> {
+    var pos = array<vec2<f32>, 3>(
+        vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)
+    );
+    return vec4(pos[idx], 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let dims = textureDimensions(current_tex);
+    let uv = pos.xy / vec2<f32>(f32(dims.x), f32(dims.y));
+    let current = textureSample(current_tex, tex_sampler, uv);
+    let history = textureSample(history_tex, tex_sampler, uv);
+    let min_luma = min(current.rgb, history.rgb);
+    let max_luma = max(current.rgb, history.rgb);
+    let clipped = clamp(history.rgb, min_luma, max_luma);
+    return vec4(mix(current.rgb, clipped, params.blend_factor), 1.0);
+}
+"#
+    }
 }

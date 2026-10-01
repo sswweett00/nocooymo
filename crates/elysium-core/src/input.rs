@@ -464,6 +464,15 @@ impl InputManager {
         self.input_state.mouse_delta = MousePosition { x: 0.0, y: 0.0 };
     }
     
+    /// Integrate the `InputRebindManager` into this legacy manager by syncing its
+    /// action map here. Call this once after applying a preset or rebinding.
+    pub fn integrate_rebind_manager(&mut self, rebind_mgr: &crate::InputRebindManager) {
+        self.action_map.clear();
+        for (name, action) in &rebind_mgr.action_map {
+            self.action_map.insert(name.clone(), action.clone());
+        }
+    }
+    
     pub fn get_input_state(&self) -> &InputState {
         &self.input_state
     }
@@ -629,6 +638,11 @@ impl InputSystem {
     
     pub fn update(&mut self) {
         self.manager.update();
+    }
+    
+    /// Sync this system's `InputManager` action map from a `InputRebindManager`.
+    pub fn integrate_rebind_manager(&mut self, rebind_mgr: &crate::InputRebindManager) {
+        self.manager.integrate_rebind_manager(rebind_mgr);
     }
     
     pub fn get_input_manager(&self) -> &InputManager {

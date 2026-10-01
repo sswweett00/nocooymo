@@ -5,6 +5,8 @@
 mod renderer;
 #[allow(dead_code, unused_variables, unused_imports, unused_mut)]
 mod editor_ui;
+#[allow(dead_code, unused_variables, unused_imports, unused_mut)]
+mod editor_extensions;
 mod history;
 #[allow(dead_code, unused_variables, unused_imports, unused_mut)]
 mod advanced_features;
@@ -120,6 +122,7 @@ pub struct EditorShared {
     pub scene_search: editor_features::SceneSearch,
     pub timeline: editor_features::AnimationTimeline,
     pub annotations: editor_features::AnnotationSystem,
+    pub extensions: editor_extensions::EditorExtensions,
 }
 
 struct EditorApp {
@@ -229,6 +232,7 @@ impl EditorApp {
                     ann.add_note("Look here first!", Vec3::new(0.0, 3.0, -5.0), editor_features::NoteColor::Yellow);
                     ann
                 },
+                extensions: editor_extensions::EditorExtensions::new(),
             },
             renderer: SoftwareRenderer::new(800, 600),
             sampler: None,
@@ -523,6 +527,9 @@ impl EditorApp {
         if let Some(p) = st.scene.get_object(player_id) {
             st.scene.camera.target = p.transform.position;
         }
+
+        // Uzantı panellerini güncelle
+        self.state.extensions.update(dt);
     }
 
     // ── Çizim ──────────────────────────────────────────────────
@@ -561,7 +568,7 @@ impl EditorApp {
         };
         if let Some(font) = &mut self.font {
             let st = &self.state;
-            draw_ui(
+            self.ui_layout = draw_ui(
                 &mut self.renderer,
                 font,
                 win_w,
@@ -570,6 +577,13 @@ impl EditorApp {
                 &layout,
                 hover.as_deref(),
                 status.as_ref().map(|(m, ok)| (m.as_str(), *ok)),
+            );
+            self.state.extensions.draw_extensions_panels(
+                &mut self.renderer,
+                font,
+                layout.right_panel,
+                hover.as_deref(),
+                &mut self.ui_layout,
             );
         }
 
@@ -973,6 +987,8 @@ f 4 8 5 1
             other => {
                 if let Some(ent_id) = other.strip_prefix("ent_").and_then(|s| s.parse::<usize>().ok()) {
                     self.state.selected = Some(ent_id);
+                } else {
+                    crate::editor_extensions::handle_extension_button(&mut self.state.extensions, other);
                 }
             }
         }
@@ -1179,6 +1195,28 @@ f 4 8 5 1
             KeyCode::KeyY if pressed => {
                 if self.history.redo(&mut self.state.scene) { self.set_status("Yinelendi"); }
             }
+            // Uzantı paneli kısayolları (F1-F10)
+            KeyCode::F1 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::AudioMixer),
+            KeyCode::F2 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::SaveManager),
+            KeyCode::F3 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::InputRebind),
+            KeyCode::F4 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Localization),
+            KeyCode::F5 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::VRSettings),
+            KeyCode::F6 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::ModManager),
+            KeyCode::F7 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Debug),
+            KeyCode::F8 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::AINav),
+            KeyCode::F9 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Settings),
+            KeyCode::F10 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Profiler),
+            // Uzantı paneli kısayolları (F11-F20)
+            KeyCode::F11 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Networking),
+            KeyCode::F12 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Scripting),
+            KeyCode::F13 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::AudioEngine),
+            KeyCode::F14 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Animation),
+            KeyCode::F15 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::VFX),
+            KeyCode::F16 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Cinematics),
+            KeyCode::F17 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Build),
+            KeyCode::F18 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::JobSystem),
+            KeyCode::F19 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Memory),
+            KeyCode::F20 if pressed => toggle_panel(&mut self.state.extensions, crate::editor_extensions::PanelId::Analytics),
             _ => {}
         }
         if pressed {

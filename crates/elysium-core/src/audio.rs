@@ -48,6 +48,7 @@ pub enum AudioState {
 pub type PlayState = AudioState;
 
 // Ses kaynağı bileşeni
+#[derive(Debug, Clone, Component)]
 pub struct AudioSource {
     pub audio_data: Option<Arc<AudioData>>,
     pub volume: f32,
@@ -181,7 +182,7 @@ impl AudioSource {
 }
 
 // Ses dinleyici bileşeni (kamera vs.)
-#[derive(Clone)]
+#[derive(Clone, Debug, Component)]
 pub struct AudioListener {
     pub position: Vec3,
     pub forward: Vec3,
