@@ -1,731 +1,322 @@
-/* @ts-self-types="./elysium_web.d.ts" */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elysium Engine — Real-Time Game Engine</title>
+<style>
+  :root {
+    --bg: #05060c;
+    --bg-elev: #0d0f1a;
+    --glass: rgba(13,15,26,0.86);
+    --border: rgba(255,255,255,0.09);
+    --text: #e8eaf0;
+    --muted: #8a90a6;
+    --accent: #4f8efc;
+    --accent-2: #2bd4a1;
+    --danger: #f0586e;
+    --radius: 16px;
+    --shadow: 0 24px 64px rgba(0,0,0,.45);
+    --font: 'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    background: radial-gradient(1200px 700px at 70% -10%, #11162b 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: var(--font);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
 
-export class ElysiumWebApp {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        ElysiumWebAppFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_elysiumwebapp_free(ptr, 0);
-    }
-    delete_selected() {
-        wasm.elysiumwebapp_delete_selected(this.__wbg_ptr);
-    }
-    /**
-     * @returns {number}
-     */
-    get_fps() {
-        const ret = wasm.elysiumwebapp_get_fps(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get_object_count() {
-        const ret = wasm.elysiumwebapp_get_object_count(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * @returns {string}
-     */
-    get_scene_json() {
-        let deferred1_0;
-        let deferred1_1;
+  /* Canvas viewport */
+  #viewport {
+    position: fixed; inset:0; z-index:1;
+    background:#02030a;
+  }
+  #canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+  #canvas:focus { outline:2px solid var(--accent); }
+
+  /* Overlay panel for tool info in viewport */
+  #info-overlay {
+    position:fixed; bottom 18px right 18px; z-index:5;
+    background: var(--glass); border:1px solid var(--border);
+    border-radius:12px; padding:12px 16px; backdrop-filter:blur(10px);
+    font-size:12px; color:var(--muted); max-width:260px; pointer-events:none;
+  }
+  #info-overlay b { color:var(--text); }
+
+  /* Navigation top */
+  nav {
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 24px;
+  }
+  .logo {
+    font-weight:900; letter-spacing:3px; font-size:20px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    background-size:200% 200%; -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    animation:shimmer 4s ease-in-out infinite;
+  }
+  .logo small { font-weight:600; -webkit-text-fill-color:var(--muted); font-size:12px; letter-spacing:1px; }
+  @keyframes shimmer { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+  .nav-links { display:flex; gap:18px; list-style:none; }
+  .nav-links a { color:var(--muted); font-size:13px; font-weight:600; transition:color .2s; }
+  .nav-links a:hover { color:var(--text); }
+  .cta-btn {
+    background:linear-gradient(135deg,var(--accent),#7aa9ff); color:#0a0c18;
+    padding:10px 18px; border-radius:999px; font-weight:700; font-size:13px;
+    border:none; cursor:pointer; transition:transform .15s, box-shadow .15s;
+  }
+  .cta-btn:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(79,142,252,.35); }
+  .cta-btn.secondary { background:rgba(255,255,255,.07); border:1px solid var(--border); color:var(--text); }
+  .cta-btn.secondary:hover { background:rgba(255,255,255,.12); border-color:var(--accent); }
+
+  /* Hero */
+  .hero {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:5; width:min(960px, 100%); padding:64px 72px;
+    display:grid; grid-template-columns: 1.15fr 0.85fr; gap:48px; align-items:center;
+  }
+  .hero h1 { font-size:clamp(34px, 5vw, 56px); line-height:1.08; font-weight:900; letter-spacing:-.5px; }
+  .hero h1 .gradient { background:linear-gradient(135deg,var(--accent),var(--accent-2),#b08cff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero p.lead { color:var(--muted); font-size:17px; line-height:1.7; margin-top:18px; max-width:560px; }
+  .hero .actions { display:flex; gap:14px; margin-top:32px; flex-wrap:wrap; }
+  .hero .actions .btn { display:inline-flex; align-items:center; gap:10px; padding:14px 24px; border-radius:12px; font-weight:700; font-size:14px; cursor:pointer; transition:.18s; }
+  .hero .actions .btn.primary { background:linear-gradient(135deg,var(--accent),#6f96f5); color:#0a0c18; box-shadow:0 10px 30px rgba(79,142,252,.3); }
+  .hero .actions .btn.primary:hover { transform:translateY(-2px); box-shadow:0 14px 36px rgba(79,142,252,.4); }
+  .hero .actions .btn.ghost { background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--text); }
+  .hero .actions .btn.ghost:hover { background:rgba(255,255,255,.12); border-color:var(--accent); }
+  .hero .badge-row { display:flex; gap:12px; margin-top:28px; flex-wrap:wrap; }
+  .hero .badge-row span { background:rgba(255,255,255,.06); border:1px solid var(--border); padding:8px 14px; border-radius:10px; font-size:12px; color:var(--muted); font-weight:600; }
+
+  .hero-visual { display:flex; align-items:center; justify-content:center; }
+  .grid-kv { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .kv { background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .kv .k { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); font-weight:700; }
+  .kv .v { font-size:15px; font-weight:700; color:var(--text); margin-top:6px; }
+  .kv.accent .v { color:var(--accent); }
+  .kv.accent-2 .v { color:var(--accent-2); }
+  .kv .sub { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  /* Features */
+  .features { padding:72px 24px; max-width:1100px; margin:0 auto; }
+  .features-header { text-align:center; margin-bottom:44px; }
+  .features-header h2 { font-size:34px; font-weight:900; letter-spacing:-.5px; }
+  .features-header p { color:var(--muted); font-size:16px; margin-top:10px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; }
+  .feat { padding:26px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,.03); transition:.2s; }
+  .feat:hover { border-color:var(--accent); background:rgba(79,142,252,.06); transform:translateY(-3px); }
+  .feat .icon { font-size:24px; margin-bottom:14px; }
+  .feat h3 { font-size:18px; font-weight:800; margin-bottom:8px; }
+  .feat p { color:var(--muted); font-size:14px; line-height:1.6; }
+
+  /* Showcase */
+  .showcase { padding:64px 24px; background:rgba(255,255,255,.015); }
+  .showcase-inner { max-width:1180px; margin:0 auto; }
+  .showcase-top { display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap; margin-bottom:32px; }
+  .showcase-top h2 { font-size:28px; font-weight:900; }
+  .showcase-top p { color:var(--muted); font-size:15px; }
+  .showcase-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; }
+  .card { background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  .card .t { font-weight:800; font-size:16px; margin-bottom:8px; }
+  .card .d { font-size:13px; color:var(--muted); line-height:1.6; }
+
+  /* CTA / Auth wall */
+  .auth {
+    position:fixed; inset:0; z-index:15; display:flex; align-items:center; justify-content:center;
+    padding:24px; background:var(--bg); overflow:hidden;
+  }
+  .auth-card {
+    width:min(460px,100%); background:linear-gradient(180deg,rgba(16,18,30,.96),rgba(9,11,22,.94));
+    border:1px solid var(--border); border-radius:20px; padding:40px 36px;
+    box-shadow:var(--shadow); backdrop-filter:blur(18px);
+  }
+  .auth-card h2 { font-size:26px; font-weight:900; margin-bottom:6px; }
+  .auth-card .sub { color:var(--muted); font-size:15px; margin-bottom:24px; }
+  .input-wrap { position:relative; margin-bottom:16px; }
+  .input-wrap label { font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:7px; }
+  .input-wrap input, .auth-card button { width:100%; padding:13px 14px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,.05); color:var(--text); font-family:var(--font); font-size:15px; outline:none; transition:.2s; }
+  .input-wrap input:focus, .auth-card button:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,142,252,.2); }
+  .auth-card button { background:linear-gradient(135deg,var(--accent),#6f96f5); color:#0a0c18; font-weight:700; font-size:15px; cursor:pointer; border:none; transition:.2s; }
+  .auth-card button:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(79,142,252,.35); }
+  .auth-card .link { margin-top:16px; text-align:center; font-size:14px; color:var(--muted); }
+  .auth-card .link a { color:var(--accent); font-weight:700; }
+  .auth-card .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.25); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; margin-right:8px; vertical-align:middle; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .auth-footer { margin-top:20px; text-align:center; font-size:12px; color:var(--muted); }
+
+  /* Footer */
+  footer { position:fixed; bottom:0; left:0; right:0; z-index:20; padding:18px 24px; display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+
+  @media (max-width:900px) {
+    .hero { grid-template-columns:1fr; padding:40px 24px; }
+    .hero-visual { order:-1; }
+    .grid-kv { grid-template-columns:repeat(2,1fr); }
+    .nav-links { display:none; }
+    .features, .showcase { padding:48px 18px; }
+  }
+  @media (max-width:520px) {
+    .grid-kv { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+  <div id="viewport">
+    <canvas id="canvas" tabindex="0" aria-label="Elysium Engine real-time viewport"></canvas>
+    <div id="info-overlay"><b>Elysium Engine</b> &middot; Real-time 3D viewport</div>
+  </div>
+
+  <nav>
+    <div class="logo">Elysium<small>Real-time Engine</small></div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#showcase">Gallery</a></li>
+      <li><a href="#auth">Getstarted</a></li>
+    </ul>
+    <a class="cta-btn" onclick="document.getElementById('auth').scrollIntoView({behavior:'smooth'})">Sign in to dashboard</a>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <h1>Build worlds in <span class="gradient">real time</span>.</h1>
+      <p class="lead">Elysium is a complete game engine: ECS, real-time rendering, physics, skeletal animation, terrain, and multiplayer — all in one workspace.</p>
+      <div class="actions">
+        <button class="btn primary" onclick="document.getElementById('auth').scrollIntoView({behavior:'smooth'})">Open the editor</button>
+        <button class="btn ghost" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">Explore features</button>
+      </div>
+      <div class="badge-row">
+        <span>ECS + scene graph</span>
+        <span>Software rasterizer</span>
+        <span>Photon physics</span>
+        <span>WebGL2 build</span>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="grid-kv">
+        <div class="kv"><div class="k">Entities</div><div class="v">120</div><div class="sub">spawned &amp; animating</div></div>
+        <div class="kv accent"><div class="k">FPS</div><div class="v">60</div><div class="sub">target gameplay loop</div></div>
+        <div class="kv"><div class="k">Terrain</div><div class="v">auto</div><div class="sub">procedural generation</div></div>
+        <div class="kv accent-2"><div class="k">Render</div><div class="v">PBR</div><div class="sub">shadows &amp; fog</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="features-header">
+      <h2>Engine under the hood</h2>
+      <p>Every subsystem is wired together and ready to ship.</p>
+    </div>
+    <div class="grid">
+      <div class="feat"><div class="icon">🔷</div><h3>ECS core</h3><p>Archetype-based entities, command buffers, fixed timestep scheduling, and thread-safe component storage.</p></div>
+      <div class="feat"><div class="icon">🖥️</div><h3>Software renderer</h3><p>Full PBR rasterizer with skybox, fog, post-processing, FXAA, bloom, and 2D UI overlay in one framebuffer.</p></div>
+      <div class="feat"><div class="icon">⚡</div><h3>Real-time loop</h3><p>Delta-time stepping, performance monitoring, pause/play, and camera tracking with orbit controls.</p></div>
+      <div class="feat"><div class="icon">🌍</div><h3>Terrain &amp; physics</h3><p>Procedural terrain, XPBD-style solver, collision, joints, fluids, vehicles, and raycasting.</p></div>
+      <div class="feat"><div class="icon">🦴</div><h3>Animation</h3><p>Skeleton rigging, blend state machines, keyframe timelines, skinned meshes, and IK.</p></div>
+      <div class="feat"><div class="icon">🔌</div><h3>Multiplayer</h3><p>Netcode, networked transforms, state replication, and WebSocket transport.</p></div>
+    </div>
+  </section>
+
+  <section class="showcase" id="showcase">
+    <div class="showcase-inner">
+      <div class="showcase-top">
+        <h2>From demo to production</h2>
+        <p>A complete engine, not a starter kit.</p>
+      </div>
+      <div class="showcase-cards">
+        <div class="card"><div class="t">Scene editor</div><div class="d">Hierarchy, inspector, gizmos, box selection, undo/redo, and a full console.</div></div>
+        <div class="card"><div class="t">Asset pipeline</div><div class="d">OBJ/GLB import, texture baking, cookers, and runtime streaming.</div></div>
+        <div class="card"><div class="t">Audio &amp; 3D</div><div class="d">Spatial mixing, reverb zones, music engine, and voice chat.</div></div>
+        <div class="card"><div class="t">Visual scripting</div><div class="d">Node graphs, animation blending, cinematics, and scripting plugins.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="auth" id="auth">
+    <div class="auth-card">
+      <h2>Welcome back</h2>
+      <p class="sub">Open the engine and start building.</p>
+      <form id="login-form">
+        <div class="input-wrap">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="input-wrap">
+          <label>Password</label>
+          <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit">Sign in</button>
+        <div class="link">New to Elysium? <a href="#" id="open-signup">Create account</a></div>
+        <div class="spinner" id="spinner" style="display:none;"></div>
+      </form>
+      <div class="auth-footer">Connected workspace · managed GitHub App creds in use</div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Elysium Engine — v2.0 Engine kit</span>
+    <span>© 2026 Elysium Contributors</span>
+  </footer>
+
+  <script type="module">
+    const form = document.getElementById('login-form');
+    const spinner = document.getElementById('spinner');
+    const openSignup = document.getElementById('open-signup');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) return;
+      spinner.style.display = 'inline-block';
+      form.querySelector('button').disabled = true;
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        if (!res.ok) throw new Error('Auth failed');
+        const data = await res.json();
+        window.location.href = data.returnTo || '/dashboard';
+      } catch (err) {
+        alert(err.message);
+        spinner.style.display = 'none';
+        form.querySelector('button').disabled = false;
+      }
+    });
+    openSignup.addEventListener('click', (e) => {
+      e.preventDefault();
+      const card = document.querySelector('.auth-card');
+      const h3 = document.createElement('h3');
+      h3.textContent = 'Create account';
+      const email2 = document.createElement('div');
+      email2.innerHTML = '<div class="input-wrap"><label>Email</label><input type="email" id="email2" placeholder="you@example.com" autocomplete="email"></div>';
+      const pass2 = document.createElement('div');
+      pass2.innerHTML = '<div class="input-wrap"><label>Password</label><input type="password" id="password2" placeholder="Min 8 characters" autocomplete="new-password"></div>';
+      const btn2 = document.createElement('button');
+      btn2.type = 'button';
+      btn2.textContent = 'Sign up';
+      btn2.style.background = 'linear-gradient(135deg,#2bd4a1,#55d89a)';
+      btn2.addEventListener('click', async () => {
+        const email = document.getElementById('email2').value.trim();
+        const password = document.getElementById('password2').value;
+        if (!email || !password) return;
+        btn2.disabled = true; btn2.textContent = 'Creating…';
         try {
-            const ret = wasm.elysiumwebapp_get_scene_json(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {boolean}
-     */
-    is_playing() {
-        const ret = wasm.elysiumwebapp_is_playing(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    constructor() {
-        const ret = wasm.elysiumwebapp_new();
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        this.__wbg_ptr = ret[0];
-        ElysiumWebAppFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
-    toggle_play() {
-        wasm.elysiumwebapp_toggle_play(this.__wbg_ptr);
-    }
-}
-if (Symbol.dispose) ElysiumWebApp.prototype[Symbol.dispose] = ElysiumWebApp.prototype.free;
-function __wbg_get_imports() {
-    const import0 = {
-        __proto__: null,
-        __wbg___wbindgen_boolean_get_fa956cfa2d1bd751: function(arg0) {
-            const v = arg0;
-            const ret = typeof(v) === 'boolean' ? v : undefined;
-            return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
-        },
-        __wbg___wbindgen_debug_string_c25d447a39f5578f: function(arg0, arg1) {
-            const ret = debugString(arg1);
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg___wbindgen_is_undefined_c05833b95a3cf397: function(arg0) {
-            const ret = arg0 === undefined;
-            return ret;
-        },
-        __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
-            throw new Error(getStringFromWasm0(arg0, arg1));
-        },
-        __wbg__wbg_cb_unref_fffb441def202758: function(arg0) {
-            arg0._wbg_cb_unref();
-        },
-        __wbg_activeTexture_d12958674e97a118: function(arg0, arg1) {
-            arg0.activeTexture(arg1 >>> 0);
-        },
-        __wbg_addEventListener_d85450ee1320c989: function() { return handleError(function (arg0, arg1, arg2, arg3) {
-            arg0.addEventListener(getStringFromWasm0(arg1, arg2), arg3);
-        }, arguments); },
-        __wbg_attachShader_8971266b4c9bc514: function(arg0, arg1, arg2) {
-            arg0.attachShader(arg1, arg2);
-        },
-        __wbg_bindBuffer_1e00cfb4321ef9a4: function(arg0, arg1, arg2) {
-            arg0.bindBuffer(arg1 >>> 0, arg2);
-        },
-        __wbg_bindTexture_28eff4bbd8aaab54: function(arg0, arg1, arg2) {
-            arg0.bindTexture(arg1 >>> 0, arg2);
-        },
-        __wbg_bufferData_90ef588bac2be2f5: function(arg0, arg1, arg2, arg3) {
-            arg0.bufferData(arg1 >>> 0, arg2, arg3 >>> 0);
-        },
-        __wbg_clearColor_9152d82998e32a1e: function(arg0, arg1, arg2, arg3, arg4) {
-            arg0.clearColor(arg1, arg2, arg3, arg4);
-        },
-        __wbg_clear_dd06a0da4ce8e13f: function(arg0, arg1) {
-            arg0.clear(arg1 >>> 0);
-        },
-        __wbg_clientHeight_994541cde34d3ca0: function(arg0) {
-            const ret = arg0.clientHeight;
-            return ret;
-        },
-        __wbg_clientWidth_6852617da948be39: function(arg0) {
-            const ret = arg0.clientWidth;
-            return ret;
-        },
-        __wbg_compileShader_9bdfd792722cf704: function(arg0, arg1) {
-            arg0.compileShader(arg1);
-        },
-        __wbg_createBuffer_01568a9d930d90dd: function(arg0) {
-            const ret = arg0.createBuffer();
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_createProgram_538c9777a4ac084f: function(arg0) {
-            const ret = arg0.createProgram();
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_createShader_7d139f2d50f77365: function(arg0, arg1) {
-            const ret = arg0.createShader(arg1 >>> 0);
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_createTexture_d13f98e0d3d912f4: function(arg0) {
-            const ret = arg0.createTexture();
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_ctrlKey_2e52816fa7160097: function(arg0) {
-            const ret = arg0.ctrlKey;
-            return ret;
-        },
-        __wbg_cullFace_f1c75ae19b07eaf3: function(arg0, arg1) {
-            arg0.cullFace(arg1 >>> 0);
-        },
-        __wbg_deleteProgram_132e191baa9fa84f: function(arg0, arg1) {
-            arg0.deleteProgram(arg1);
-        },
-        __wbg_deleteShader_993edb4beb3c4d53: function(arg0, arg1) {
-            arg0.deleteShader(arg1);
-        },
-        __wbg_deltaY_6cfce8f8da250c23: function(arg0) {
-            const ret = arg0.deltaY;
-            return ret;
-        },
-        __wbg_depthFunc_74a8f8acf8973c86: function(arg0, arg1) {
-            arg0.depthFunc(arg1 >>> 0);
-        },
-        __wbg_devicePixelRatio_1c0e0ed7deb19cd8: function(arg0) {
-            const ret = arg0.devicePixelRatio;
-            return ret;
-        },
-        __wbg_document_179650d6cb13c263: function(arg0) {
-            const ret = arg0.document;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_drawArrays_b0c59a6e158122f2: function(arg0, arg1, arg2, arg3) {
-            arg0.drawArrays(arg1 >>> 0, arg2, arg3);
-        },
-        __wbg_enableVertexAttribArray_7470ba2dcf2606e3: function(arg0, arg1) {
-            arg0.enableVertexAttribArray(arg1 >>> 0);
-        },
-        __wbg_enable_28bbeed576131d1f: function(arg0, arg1) {
-            arg0.enable(arg1 >>> 0);
-        },
-        __wbg_getAttribLocation_c07ccb50a22b50b2: function(arg0, arg1, arg2, arg3) {
-            const ret = arg0.getAttribLocation(arg1, getStringFromWasm0(arg2, arg3));
-            return ret;
-        },
-        __wbg_getContext_e79ddf6a9cb3cc76: function() { return handleError(function (arg0, arg1, arg2) {
-            const ret = arg0.getContext(getStringFromWasm0(arg1, arg2));
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        }, arguments); },
-        __wbg_getElementById_1cbd8f06dbe8eb8e: function(arg0, arg1, arg2) {
-            const ret = arg0.getElementById(getStringFromWasm0(arg1, arg2));
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_getProgramInfoLog_d1ce570463a68779: function(arg0, arg1, arg2) {
-            const ret = arg1.getProgramInfoLog(arg2);
-            var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            var len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg_getProgramParameter_c8d1154fbb3c0890: function(arg0, arg1, arg2) {
-            const ret = arg0.getProgramParameter(arg1, arg2 >>> 0);
-            return ret;
-        },
-        __wbg_getShaderInfoLog_5cee2add982c7165: function(arg0, arg1, arg2) {
-            const ret = arg1.getShaderInfoLog(arg2);
-            var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            var len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-        },
-        __wbg_getShaderParameter_3394e75dcb97f380: function(arg0, arg1, arg2) {
-            const ret = arg0.getShaderParameter(arg1, arg2 >>> 0);
-            return ret;
-        },
-        __wbg_getUniformLocation_788a34295dd6fabe: function(arg0, arg1, arg2, arg3) {
-            const ret = arg0.getUniformLocation(arg1, getStringFromWasm0(arg2, arg3));
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_instanceof_HtmlCanvasElement_ed02ed9136056019: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof HTMLCanvasElement;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_WebGl2RenderingContext_90225152e4e3c799: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof WebGL2RenderingContext;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_Window_05ba1ee4f6781663: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof Window;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_keyCode_f9ab89c2dd6c3770: function(arg0) {
-            const ret = arg0.keyCode;
-            return ret;
-        },
-        __wbg_linkProgram_4e047fb3197a0348: function(arg0, arg1) {
-            arg0.linkProgram(arg1);
-        },
-        __wbg_now_390768da5ee9e776: function(arg0) {
-            const ret = arg0.now();
-            return ret;
-        },
-        __wbg_offsetX_fdc5eb20edabaadb: function(arg0) {
-            const ret = arg0.offsetX;
-            return ret;
-        },
-        __wbg_offsetY_0a05e99022d21c5b: function(arg0) {
-            const ret = arg0.offsetY;
-            return ret;
-        },
-        __wbg_performance_3ef602e13d6c3b56: function(arg0) {
-            const ret = arg0.performance;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_preventDefault_b64888c857500682: function(arg0) {
-            arg0.preventDefault();
-        },
-        __wbg_random_039a7d5d06e0d333: function() {
-            const ret = Math.random();
-            return ret;
-        },
-        __wbg_requestAnimationFrame_1a85deeab66448c2: function() { return handleError(function (arg0, arg1) {
-            const ret = arg0.requestAnimationFrame(arg1);
-            return ret;
-        }, arguments); },
-        __wbg_set_height_7d9d8f892e6964c6: function(arg0, arg1) {
-            arg0.height = arg1 >>> 0;
-        },
-        __wbg_set_innerHTML_f78a45a07f97e136: function(arg0, arg1, arg2) {
-            arg0.innerHTML = getStringFromWasm0(arg1, arg2);
-        },
-        __wbg_set_width_8e30d010cd66830d: function(arg0, arg1) {
-            arg0.width = arg1 >>> 0;
-        },
-        __wbg_shaderSource_c3469dc2221dd528: function(arg0, arg1, arg2, arg3) {
-            arg0.shaderSource(arg1, getStringFromWasm0(arg2, arg3));
-        },
-        __wbg_static_accessor_GLOBAL_4ef717fb391d88b7: function() {
-            const ret = typeof global === 'undefined' ? null : global;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_GLOBAL_THIS_8d1badc68b5a74f4: function() {
-            const ret = typeof globalThis === 'undefined' ? null : globalThis;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_SELF_146583524fe1469b: function() {
-            const ret = typeof self === 'undefined' ? null : self;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_static_accessor_WINDOW_f2829a2234d7819e: function() {
-            const ret = typeof window === 'undefined' ? null : window;
-            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
-        },
-        __wbg_texImage2D_5c8a1060d1f4a267: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
-            arg0.texImage2D(arg1 >>> 0, arg2, arg3, arg4, arg5, arg6, arg7 >>> 0, arg8 >>> 0, arg9 === 0 ? undefined : getArrayU8FromWasm0(arg9, arg10));
-        }, arguments); },
-        __wbg_texParameteri_1fc451e0964fc91c: function(arg0, arg1, arg2, arg3) {
-            arg0.texParameteri(arg1 >>> 0, arg2 >>> 0, arg3);
-        },
-        __wbg_uniform1i_7621f908f78177df: function(arg0, arg1, arg2) {
-            arg0.uniform1i(arg1, arg2);
-        },
-        __wbg_useProgram_49495850b446fa56: function(arg0, arg1) {
-            arg0.useProgram(arg1);
-        },
-        __wbg_vertexAttribPointer_a8f0af57269c2067: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
-            arg0.vertexAttribPointer(arg1 >>> 0, arg2, arg3 >>> 0, arg4 !== 0, arg5, arg6);
-        },
-        __wbg_viewport_affdf15c559df1e2: function(arg0, arg1, arg2, arg3, arg4) {
-            arg0.viewport(arg1, arg2, arg3, arg4);
-        },
-        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("Event")], shim_idx: 29, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("KeyboardEvent")], shim_idx: 29, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_1);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("MouseEvent")], shim_idx: 29, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_2);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("WheelEvent")], shim_idx: 29, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_3);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 33, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h386c8fc4eb17ef89);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000006: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(Slice(F32)) -> NamedExternref("Float32Array")`.
-            const ret = getArrayF32FromWasm0(arg0, arg1);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000007: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(Slice(U8)) -> NamedExternref("Uint8Array")`.
-            const ret = getArrayU8FromWasm0(arg0, arg1);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000008: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(String) -> Externref`.
-            const ret = getStringFromWasm0(arg0, arg1);
-            return ret;
-        },
-        __wbindgen_init_externref_table: function() {
-            const table = wasm.__wbindgen_externrefs;
-            const offset = table.grow(4);
-            table.set(0, undefined);
-            table.set(offset + 0, undefined);
-            table.set(offset + 1, null);
-            table.set(offset + 2, true);
-            table.set(offset + 3, false);
-        },
-    };
-    return {
-        __proto__: null,
-        "./elysium_web_bg.js": import0,
-    };
-}
-
-function wasm_bindgen__convert__closures_____invoke__h386c8fc4eb17ef89(arg0, arg1) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h386c8fc4eb17ef89(arg0, arg1);
-}
-
-function wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd(arg0, arg1, arg2);
-}
-
-function wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_1(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_1(arg0, arg1, arg2);
-}
-
-function wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_2(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_2(arg0, arg1, arg2);
-}
-
-function wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_3(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h1cae7eadb2ff40cd_3(arg0, arg1, arg2);
-}
-
-const ElysiumWebAppFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_elysiumwebapp_free(ptr, 1));
-
-function addToExternrefTable0(obj) {
-    const idx = wasm.__externref_table_alloc();
-    wasm.__wbindgen_externrefs.set(idx, obj);
-    return idx;
-}
-
-const CLOSURE_DTORS = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(state => wasm.__wbindgen_destroy_closure(state.a, state.b));
-
-function debugString(val) {
-    // primitive types
-    const type = typeof val;
-    if (type == 'number' || type == 'boolean' || val == null) {
-        return  `${val}`;
-    }
-    if (type == 'string') {
-        return `"${val}"`;
-    }
-    if (type == 'symbol') {
-        const description = val.description;
-        if (description == null) {
-            return 'Symbol';
-        } else {
-            return `Symbol(${description})`;
-        }
-    }
-    if (type == 'function') {
-        const name = val.name;
-        if (typeof name == 'string' && name.length > 0) {
-            return `Function(${name})`;
-        } else {
-            return 'Function';
-        }
-    }
-    // objects
-    if (Array.isArray(val)) {
-        const length = val.length;
-        let debug = '[';
-        if (length > 0) {
-            debug += debugString(val[0]);
-        }
-        for(let i = 1; i < length; i++) {
-            debug += ', ' + debugString(val[i]);
-        }
-        debug += ']';
-        return debug;
-    }
-    // Test for built-in
-    const builtInMatches = /\[object ([^\]]+)\]/.exec(toString.call(val));
-    let className;
-    if (builtInMatches && builtInMatches.length > 1) {
-        className = builtInMatches[1];
-    } else {
-        // Failed to match the standard '[object ClassName]'
-        return toString.call(val);
-    }
-    if (className == 'Object') {
-        // we're a user defined class or Object
-        // JSON.stringify avoids problems with cycles, and is generally much
-        // easier than looping through ownProperties of `val`.
-        try {
-            return 'Object(' + JSON.stringify(val) + ')';
-        } catch (_) {
-            return 'Object';
-        }
-    }
-    // errors
-    if (val instanceof Error) {
-        return `${val.name}: ${val.message}\n${val.stack}`;
-    }
-    // TODO we could test for more things here, like `Set`s and `Map`s.
-    return className;
-}
-
-function getArrayF32FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
-}
-
-function getArrayU8FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
-}
-
-let cachedDataViewMemory0 = null;
-function getDataViewMemory0() {
-    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
-        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
-    }
-    return cachedDataViewMemory0;
-}
-
-let cachedFloat32ArrayMemory0 = null;
-function getFloat32ArrayMemory0() {
-    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
-        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
-    }
-    return cachedFloat32ArrayMemory0;
-}
-
-function getStringFromWasm0(ptr, len) {
-    return decodeText(ptr >>> 0, len);
-}
-
-let cachedUint8ArrayMemory0 = null;
-function getUint8ArrayMemory0() {
-    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
-        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-    }
-    return cachedUint8ArrayMemory0;
-}
-
-function handleError(f, args) {
-    try {
-        return f.apply(this, args);
-    } catch (e) {
-        const idx = addToExternrefTable0(e);
-        wasm.__wbindgen_exn_store(idx);
-    }
-}
-
-function isLikeNone(x) {
-    return x === undefined || x === null;
-}
-
-function makeMutClosure(arg0, arg1, f) {
-    const state = { a: arg0, b: arg1, cnt: 1 };
-    const real = (...args) => {
-
-        // First up with a closure we increment the internal reference
-        // count. This ensures that the Rust closure environment won't
-        // be deallocated while we're invoking it.
-        state.cnt++;
-        const a = state.a;
-        state.a = 0;
-        try {
-            return f(a, state.b, ...args);
-        } finally {
-            state.a = a;
-            real._wbg_cb_unref();
-        }
-    };
-    real._wbg_cb_unref = () => {
-        if (--state.cnt === 0) {
-            wasm.__wbindgen_destroy_closure(state.a, state.b);
-            state.a = 0;
-            CLOSURE_DTORS.unregister(state);
-        }
-    };
-    CLOSURE_DTORS.register(real, state, state);
-    return real;
-}
-
-function passStringToWasm0(arg, malloc, realloc) {
-    if (realloc === undefined) {
-        const buf = cachedTextEncoder.encode(arg);
-        const ptr = malloc(buf.length, 1) >>> 0;
-        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
-        WASM_VECTOR_LEN = buf.length;
-        return ptr;
-    }
-
-    let len = arg.length;
-    let ptr = malloc(len, 1) >>> 0;
-
-    const mem = getUint8ArrayMemory0();
-
-    let offset = 0;
-
-    for (; offset < len; offset++) {
-        const code = arg.charCodeAt(offset);
-        if (code > 0x7F) break;
-        mem[ptr + offset] = code;
-    }
-    if (offset !== len) {
-        if (offset !== 0) {
-            arg = arg.slice(offset);
-        }
-        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
-        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
-        const ret = cachedTextEncoder.encodeInto(arg, view);
-
-        offset += ret.written;
-        ptr = realloc(ptr, len, offset, 1) >>> 0;
-    }
-
-    WASM_VECTOR_LEN = offset;
-    return ptr;
-}
-
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_externrefs.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
-}
-
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-cachedTextDecoder.decode();
-const MAX_SAFARI_DECODE_BYTES = 2146435072;
-let numBytesDecoded = 0;
-function decodeText(ptr, len) {
-    numBytesDecoded += len;
-    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-        cachedTextDecoder.decode();
-        numBytesDecoded = len;
-    }
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
-}
-
-const cachedTextEncoder = new TextEncoder();
-
-if (!('encodeInto' in cachedTextEncoder)) {
-    cachedTextEncoder.encodeInto = function (arg, view) {
-        const buf = cachedTextEncoder.encode(arg);
-        view.set(buf);
-        return {
-            read: arg.length,
-            written: buf.length
-        };
-    };
-}
-
-let WASM_VECTOR_LEN = 0;
-
-let wasmModule, wasmInstance, wasm;
-function __wbg_finalize_init(instance, module) {
-    wasmInstance = instance;
-    wasm = instance.exports;
-    wasmModule = module;
-    cachedDataViewMemory0 = null;
-    cachedFloat32ArrayMemory0 = null;
-    cachedUint8ArrayMemory0 = null;
-    wasm.__wbindgen_start();
-    return wasm;
-}
-
-async function __wbg_load(module, imports) {
-    if (typeof Response === 'function' && module instanceof Response) {
-        if (!module.ok) {
-            throw new Error(`failed to fetch Wasm: ${module.status} ${module.statusText} fetching '${module.url}'`);
-        }
-
-        if (typeof WebAssembly.instantiateStreaming === 'function') {
-            try {
-                return await WebAssembly.instantiateStreaming(module, imports);
-            } catch (e) {
-                const validResponse = expectedResponseType(module.type);
-
-                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
-                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
-
-                } else { throw e; }
-            }
-        }
-
-        const bytes = await module.arrayBuffer();
-        return await WebAssembly.instantiate(bytes, imports);
-    } else {
-        const instance = await WebAssembly.instantiate(module, imports);
-
-        if (instance instanceof WebAssembly.Instance) {
-            return { instance, module };
-        } else {
-            return instance;
-        }
-    }
-
-    function expectedResponseType(type) {
-        switch (type) {
-            case 'basic': case 'cors': case 'default': return true;
-        }
-        return false;
-    }
-}
-
-function initSync(module) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (module !== undefined) {
-        if (Object.getPrototypeOf(module) === Object.prototype) {
-            ({module} = module)
-        } else {
-            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
-        }
-    }
-
-    const imports = __wbg_get_imports();
-    if (!(module instanceof WebAssembly.Module)) {
-        module = new WebAssembly.Module(module);
-    }
-    const instance = new WebAssembly.Instance(module, imports);
-    return __wbg_finalize_init(instance, module);
-}
-
-async function __wbg_init(module_or_path) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (module_or_path !== undefined) {
-        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-            ({module_or_path} = module_or_path)
-        } else {
-            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
-        }
-    }
-
-    if (module_or_path === undefined) {
-        module_or_path = new URL('elysium_web_bg.wasm', import.meta.url);
-    }
-    const imports = __wbg_get_imports();
-
-    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
-        module_or_path = fetch(module_or_path);
-    }
-
-    const { instance, module } = await __wbg_load(await module_or_path, imports);
-
-    return __wbg_finalize_init(instance, module);
-}
-
-export { initSync, __wbg_init as default };
+          const res = await fetch('/api/auth/signup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, password }) });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Signup failed');
+          window.location.href = data.returnTo || '/dashboard';
+        } catch (err) { alert(err.message); btn2.disabled = false; btn2.textContent = 'Sign up'; }
+      });
+      card.replaceChild(email2, card.querySelector('.input-wrap:first-child'));
+      card.replaceChild(pass2, card.querySelector('.input-wrap:nth-child(2)'));
+      card.insertBefore(h3, card.firstChild);
+      card.querySelector('form').replaceChild(btn2, card.querySelector('button'));
+      card.querySelector('.link').remove();
+      card.querySelector('.auth-footer').remove();
+    });
+  </script>
+</body>
+</html>
