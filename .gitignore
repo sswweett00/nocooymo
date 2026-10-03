@@ -2,6 +2,6 @@ target/
 *.xwd
 .freebuff/
 node_modules/
-target/
 zig-out/
 zig-cache/
+pkg/
